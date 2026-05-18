@@ -15,6 +15,7 @@ import arp_scan
 import banner
 import report
 import syn_scan
+import vuln
 from arp_scan import default_iface, fmt_mac, get_iface_info
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -33,6 +34,11 @@ def parse_args():
                    help="Timeout TCP par hôte en secondes (défaut : 1.5)")
     p.add_argument("--no-banner", action="store_true",
                    help="Désactiver le banner grabbing")
+    p.add_argument("--no-vuln", action="store_true",
+                   help="Désactiver la recherche CVE (NVD)")
+    p.add_argument("--nvd-key", default=os.environ.get("NVD_API_KEY", ""),
+                   metavar="KEY",
+                   help="Clé API NVD (ou export NVD_API_KEY) — accélère ×9 le rate-limit")
     p.add_argument("--output", "-o", default="report.html",
                    help="Chemin du rapport HTML (défaut : report.html)")
     return p.parse_args()
@@ -73,15 +79,22 @@ def _print_host_result(ip: str, mac: bytes, results: dict[int, dict]):
 
 def _print_summary(full_results: dict):
     _section("Résumé")
-    print(f"\n  {'IP':<18} {'MAC':<20} {'OS':<14} Ports ouverts")
-    print("  " + "─" * 60)
+    print(f"\n  {'IP':<18} {'MAC':<20} {'OS':<14} {'Risque':<13} Ports ouverts")
+    print("  " + "─" * 72)
     for ip in sorted(full_results):
         entry      = full_results[ip]
         mac_str    = fmt_mac(entry["mac"])
         os_guess   = entry["os_guess"]
         open_ports = sorted(p for p, r in entry["ports"].items() if r["state"] == "open")
         ports_str  = ", ".join(map(str, open_ports)) if open_ports else "—"
-        print(f"  {ip:<18} {mac_str:<20} {os_guess:<14} {ports_str}")
+        risk_score = entry.get("risk_score", 0.0)
+        risk_level = entry.get("risk_level", "NONE")
+        n_cves     = entry.get("total_cves", 0)
+        if risk_level != "NONE":
+            risk_str = f"{risk_score:.1f} {risk_level} ({n_cves})"
+        else:
+            risk_str = "—"
+        print(f"  {ip:<18} {mac_str:<20} {os_guess:<14} {risk_str:<13} {ports_str}")
     total_open = sum(
         1
         for e in full_results.values()
@@ -141,11 +154,21 @@ def main():
         }
         _print_host_result(ip, mac, port_results)
 
-    # ── Phase 3 : Résumé ──────────────────────────────────────────────────────
+    # ── Phase 3 : Analyse CVE (NVD) ──────────────────────────────────────────
+    if not args.no_vuln:
+        _section("Phase 3 : Analyse de vulnérabilités (NVD)")
+        vuln.enrich(full_results, api_key=args.nvd_key, verbose=True)
+    else:
+        for entry in full_results.values():
+            entry.setdefault("risk_score", 0.0)
+            entry.setdefault("risk_level", "NONE")
+            entry.setdefault("total_cves", 0)
+
+    # ── Phase 4 : Résumé ──────────────────────────────────────────────────────
     _print_summary(full_results)
 
-    # ── Phase 4 : Rapport HTML ────────────────────────────────────────────────
-    _section("Phase 4 : Génération du rapport HTML")
+    # ── Phase 5 : Rapport HTML ────────────────────────────────────────────────
+    _section("Phase 5 : Génération du rapport HTML")
     path = report.generate(src_ip, src_mac, network, full_results,
                            output=args.output)
     print(f"\n  Rapport généré : {path}\n")

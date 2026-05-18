@@ -35,6 +35,11 @@ td{padding:4px 3px;border-bottom:1px solid #1a2e45;vertical-align:top}
 .sv{color:#7dd3fc}.vr{color:#94a3b8;font-size:10px}
 .bn{color:#4b5563;font-size:10px;font-style:italic;max-width:200px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.CRITICAL{color:#ef4444}.HIGH{color:#f97316}.MEDIUM{color:#eab308}.LOW{color:#22c55e}.NONE{color:#475569}
+.risk-b{border:1px solid currentColor;border-radius:10px;padding:1px 8px;
+  font-size:11px;font-weight:bold;display:inline-block;margin:4px 0}
+a.cv{color:#7dd3fc;text-decoration:none;font-size:11px}a.cv:hover{text-decoration:underline}
+.cvd{color:#475569;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
   font-size:11px;color:#475569;display:flex;gap:18px;flex-shrink:0;align-items:center}
 #legend{display:flex;gap:12px;align-items:center}
@@ -45,9 +50,9 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 <body>
 <header>
   <h1>NETMAP</h1>
-  <span class="meta">192.168.1.0/24 &nbsp;·&nbsp; 2026-05-18 19:52</span>
-  <span class="badge">5 host(s)</span>
-  <span class="badge">10 port(s) ouverts</span>
+  <span class="meta">192.168.1.0/24 &nbsp;·&nbsp; 2026-05-18 20:08</span>
+  <span class="badge">1 host(s)</span>
+  <span class="badge">3 port(s) ouverts</span>
 </header>
 <div id="main">
   <div id="wrap"><canvas id="g"></canvas></div>
@@ -71,341 +76,25 @@ const DATA = {
   "scanner_ip": "192.168.1.43",
   "scanner_mac": "00:0c:29:da:26:5c",
   "network": "192.168.1.0/24",
-  "scan_time": "2026-05-18 19:52",
+  "scan_time": "2026-05-18 20:08",
   "hosts": [
     {
-      "ip": "192.168.1.254",
-      "mac": "00:24:d4:a7:7a:85",
-      "os": "Linux/Unix",
-      "ttl": 64,
-      "ports": [
-        {
-          "port": 21,
-          "state": "open",
-          "ttl": 64,
-          "service": "FTP",
-          "version": "Welcome to Freebox FTP Server.",
-          "banner": "220 Welcome to Freebox FTP Server."
-        },
-        {
-          "port": 22,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 23,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 25,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 53,
-          "state": "open",
-          "ttl": 64,
-          "service": "unknown",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 80,
-          "state": "open",
-          "ttl": 64,
-          "service": "HTTP",
-          "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 19:52:04 GMT  Content-Type: text/html; charset=utf-8  Connection:"
-        },
-        {
-          "port": 110,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 135,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 139,
-          "state": "open",
-          "ttl": 64,
-          "service": "unknown",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 143,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 443,
-          "state": "open",
-          "ttl": 64,
-          "service": "HTTPS",
-          "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 19:52:05 GMT  Content-Type: text/html; charset=utf-8  Connection:"
-        },
-        {
-          "port": 445,
-          "state": "open",
-          "ttl": 64,
-          "service": "unknown",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3306,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3389,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 5432,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8080,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8443,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        }
-      ]
-    },
-    {
-      "ip": "192.168.1.44",
-      "mac": "b4:61:e9:a9:b6:2b",
-      "os": "?",
-      "ttl": null,
-      "ports": [
-        {
-          "port": 21,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 22,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 23,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 25,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 53,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 80,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 110,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 135,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 139,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 143,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 443,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 445,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3306,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3389,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 5432,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8080,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8443,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        }
-      ]
-    },
-    {
       "ip": "192.168.1.47",
-      "mac": "00:17:88:24:35:f2",
+      "mac": "00:17:88:24:35:02",
       "os": "Linux/Unix",
       "ttl": 64,
+      "risk_score": 7.5,
+      "risk_level": "HIGH",
+      "total_cves": 20,
       "ports": [
-        {
-          "port": 21,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
         {
           "port": 22,
           "state": "closed",
           "ttl": 64,
           "service": "",
           "version": "",
-          "banner": ""
-        },
-        {
-          "port": 23,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 25,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 53,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
+          "banner": "",
+          "cves": []
         },
         {
           "port": 80,
@@ -413,39 +102,89 @@ const DATA = {
           "ttl": 64,
           "service": "HTTP",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 19:52:11 GMT  Content-Type: text/html  Content-Length: 1854  Last"
-        },
-        {
-          "port": 110,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 135,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 139,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 143,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
+          "banner": "",
+          "cves": [
+            {
+              "id": "CVE-2009-2629",
+              "desc": "Buffer underflow in src/http/ngx_http_parse.c in nginx 0.1.0 through 0.5.37, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.15 allows remote attackers to execute arbitrary code via crafted HTTP requests.",
+              "cvss": 7.5,
+              "severity": "HIGH",
+              "published": "2009-09-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-2629"
+            },
+            {
+              "id": "CVE-2009-4487",
+              "desc": "nginx 0.7.64 writes data to a log file without sanitizing non-printable characters, which might allow remote attackers to modify a window's title, or possibly execute arbitrary commands or overwrite files, via an HTTP request containing an escape seq",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2010-01-13",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-4487"
+            },
+            {
+              "id": "CVE-2011-4315",
+              "desc": "Heap-based buffer overflow in compression-pointer processing in core/ngx_resolver.c in nginx before 1.0.10 allows remote resolvers to cause a denial of service (daemon crash) or possibly have unspecified other impact via a long response.",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2011-12-08",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-4315"
+            },
+            {
+              "id": "CVE-2012-2089",
+              "desc": "Buffer overflow in ngx_http_mp4_module.c in the ngx_http_mp4_module module in nginx 1.0.7 through 1.0.14 and 1.1.3 through 1.1.18, when the mp4 directive is used, allows remote attackers to cause a denial of service (memory overwrite) or possibly exe",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2012-04-17",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2012-2089"
+            },
+            {
+              "id": "CVE-2009-3896",
+              "desc": "src/http/ngx_http_parse.c in nginx (aka Engine X) 0.1.0 through 0.4.14, 0.5.x before 0.5.38, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.14 allows remote attackers to cause a denial of service (NULL pointer dereference and worker p",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2009-11-24",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-3896"
+            },
+            {
+              "id": "CVE-2010-2263",
+              "desc": "nginx 0.8 before 0.8.40 and 0.7 before 0.7.66, when running on Windows, allows remote attackers to obtain source code or unparsed content of arbitrary files under the web document root by appending ::$DATA to the URI.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2010-06-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2010-2263"
+            },
+            {
+              "id": "CVE-2010-2266",
+              "desc": "nginx 0.8.36 allows remote attackers to cause a denial of service (crash) via certain encoded directory traversal sequences that trigger memory corruption, as demonstrated using the \"%c0.%c0.\" sequence.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2010-06-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2010-2266"
+            },
+            {
+              "id": "CVE-2012-1180",
+              "desc": "Use-after-free vulnerability in nginx before 1.0.14 and 1.1.x before 1.1.17 allows remote HTTP servers to obtain sensitive information from process memory via a crafted backend response, in conjunction with a client request.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2012-04-17",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2012-1180"
+            },
+            {
+              "id": "CVE-2011-4963",
+              "desc": "nginx/Windows 1.3.x before 1.3.1 and 1.2.x before 1.2.1 allows remote attackers to bypass intended access restrictions and access restricted files via (1) a trailing . (dot) or (2) certain \"$index_allocation\" sequences in a request.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2012-07-26",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-4963"
+            },
+            {
+              "id": "CVE-2009-3898",
+              "desc": "Directory traversal vulnerability in src/http/modules/ngx_http_dav_module.c in nginx (aka Engine X) before 0.7.63, and 0.8.x before 0.8.17, allows remote authenticated users to create or overwrite arbitrary files via a .. (dot dot) in the Destination",
+              "cvss": 4.9,
+              "severity": "MEDIUM",
+              "published": "2009-11-24",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-3898"
+            }
+          ]
         },
         {
           "port": 443,
@@ -453,39 +192,89 @@ const DATA = {
           "ttl": 64,
           "service": "HTTPS",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 19:52:11 GMT  Content-Type: text/html  Content-Length: 1854  Last"
-        },
-        {
-          "port": 445,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3306,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3389,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 5432,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
+          "banner": "",
+          "cves": [
+            {
+              "id": "CVE-2009-2629",
+              "desc": "Buffer underflow in src/http/ngx_http_parse.c in nginx 0.1.0 through 0.5.37, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.15 allows remote attackers to execute arbitrary code via crafted HTTP requests.",
+              "cvss": 7.5,
+              "severity": "HIGH",
+              "published": "2009-09-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-2629"
+            },
+            {
+              "id": "CVE-2009-4487",
+              "desc": "nginx 0.7.64 writes data to a log file without sanitizing non-printable characters, which might allow remote attackers to modify a window's title, or possibly execute arbitrary commands or overwrite files, via an HTTP request containing an escape seq",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2010-01-13",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-4487"
+            },
+            {
+              "id": "CVE-2011-4315",
+              "desc": "Heap-based buffer overflow in compression-pointer processing in core/ngx_resolver.c in nginx before 1.0.10 allows remote resolvers to cause a denial of service (daemon crash) or possibly have unspecified other impact via a long response.",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2011-12-08",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-4315"
+            },
+            {
+              "id": "CVE-2012-2089",
+              "desc": "Buffer overflow in ngx_http_mp4_module.c in the ngx_http_mp4_module module in nginx 1.0.7 through 1.0.14 and 1.1.3 through 1.1.18, when the mp4 directive is used, allows remote attackers to cause a denial of service (memory overwrite) or possibly exe",
+              "cvss": 6.8,
+              "severity": "MEDIUM",
+              "published": "2012-04-17",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2012-2089"
+            },
+            {
+              "id": "CVE-2009-3896",
+              "desc": "src/http/ngx_http_parse.c in nginx (aka Engine X) 0.1.0 through 0.4.14, 0.5.x before 0.5.38, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.14 allows remote attackers to cause a denial of service (NULL pointer dereference and worker p",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2009-11-24",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-3896"
+            },
+            {
+              "id": "CVE-2010-2263",
+              "desc": "nginx 0.8 before 0.8.40 and 0.7 before 0.7.66, when running on Windows, allows remote attackers to obtain source code or unparsed content of arbitrary files under the web document root by appending ::$DATA to the URI.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2010-06-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2010-2263"
+            },
+            {
+              "id": "CVE-2010-2266",
+              "desc": "nginx 0.8.36 allows remote attackers to cause a denial of service (crash) via certain encoded directory traversal sequences that trigger memory corruption, as demonstrated using the \"%c0.%c0.\" sequence.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2010-06-15",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2010-2266"
+            },
+            {
+              "id": "CVE-2012-1180",
+              "desc": "Use-after-free vulnerability in nginx before 1.0.14 and 1.1.x before 1.1.17 allows remote HTTP servers to obtain sensitive information from process memory via a crafted backend response, in conjunction with a client request.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2012-04-17",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2012-1180"
+            },
+            {
+              "id": "CVE-2011-4963",
+              "desc": "nginx/Windows 1.3.x before 1.3.1 and 1.2.x before 1.2.1 allows remote attackers to bypass intended access restrictions and access restricted files via (1) a trailing . (dot) or (2) certain \"$index_allocation\" sequences in a request.",
+              "cvss": 5.0,
+              "severity": "MEDIUM",
+              "published": "2012-07-26",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2011-4963"
+            },
+            {
+              "id": "CVE-2009-3898",
+              "desc": "Directory traversal vulnerability in src/http/modules/ngx_http_dav_module.c in nginx (aka Engine X) before 0.7.63, and 0.8.x before 0.8.17, allows remote authenticated users to create or overwrite arbitrary files via a .. (dot dot) in the Destination",
+              "cvss": 4.9,
+              "severity": "MEDIUM",
+              "published": "2009-11-24",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-3898"
+            }
+          ]
         },
         {
           "port": 8080,
@@ -493,303 +282,8 @@ const DATA = {
           "ttl": 64,
           "service": "HTTP",
           "version": "",
-          "banner": "HTTP/1.1 505 HTTP Version Not Supported"
-        },
-        {
-          "port": 8443,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        }
-      ]
-    },
-    {
-      "ip": "192.168.1.48",
-      "mac": "b2:06:8c:8e:0e:e9",
-      "os": "Linux/Unix",
-      "ttl": 64,
-      "ports": [
-        {
-          "port": 21,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 22,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 23,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 25,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 53,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 80,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 110,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 135,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 139,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 143,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 443,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 445,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3306,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3389,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 5432,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8080,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8443,
-          "state": "closed",
-          "ttl": 64,
-          "service": "",
-          "version": "",
-          "banner": ""
-        }
-      ]
-    },
-    {
-      "ip": "192.168.1.8",
-      "mac": "40:c7:3c:26:b3:67",
-      "os": "Windows",
-      "ttl": 128,
-      "ports": [
-        {
-          "port": 21,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 22,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 23,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 25,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 53,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 80,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 110,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 135,
-          "state": "open",
-          "ttl": 128,
-          "service": "unknown",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 139,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 143,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 443,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 445,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3306,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 3389,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 5432,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8080,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
-        },
-        {
-          "port": 8443,
-          "state": "filtered",
-          "ttl": null,
-          "service": "",
-          "version": "",
-          "banner": ""
+          "banner": "",
+          "cves": []
         }
       ]
     }
@@ -804,6 +298,7 @@ const OC = {
   '?':             '#94a3b8',
 };
 const SC = {'open':'o','closed':'c','filtered':'f'};
+const RC = {'CRITICAL':'#ef4444','HIGH':'#f97316','MEDIUM':'#eab308','LOW':'#22c55e'};
 
 const canvas = document.getElementById('g');
 const ctx    = canvas.getContext('2d');
@@ -928,6 +423,13 @@ function drawNode(n){
     g.addColorStop(0, col+'60'); g.addColorStop(1,'transparent');
     ctx.beginPath(); ctx.arc(x,y,r+12,0,Math.PI*2);
     ctx.fillStyle=g; ctx.fill();
+  }
+
+  // Anneau de risque CVE (rouge=Critical … vert=Low)
+  const rc=RC[d.risk_level];
+  if(rc){
+    ctx.beginPath();ctx.arc(x,y,r+4,0,Math.PI*2);
+    ctx.strokeStyle=rc+'cc';ctx.lineWidth=3;ctx.stroke();
   }
 
   // Fond
@@ -1062,13 +564,34 @@ function renderPanel(d){
     rows='<div class="sec">Hôte local (scanner)</div>';
   }
 
+  // Section CVE
+  const allCves=(d.ports||[]).flatMap(p=>(p.cves||[]).map(c=>({...c,_p:p.port})));
+  allCves.sort((a,b)=>b.cvss-a.cvss);
+  let cveHtml='';
+  if(allCves.length){
+    const rl=d.risk_level||'NONE', rs=Number(d.risk_score||0).toFixed(1);
+    cveHtml=`<div class="sec">CVE détectées (${allCves.length})</div>
+<div><span class="${rl} risk-b">${rs}/10 · ${rl}</span></div>
+<table style="margin-top:8px"><tr><th>CVE</th><th>CVSS</th><th>Sév.</th><th>Description</th></tr>`;
+    allCves.forEach(c=>{
+      cveHtml+=`<tr>
+        <td><a class="cv" href="${c.url}" target="_blank">${esc(c.id)}</a>
+            <div style="color:#334155;font-size:9px">port ${c._p}/tcp</div></td>
+        <td>${Number(c.cvss).toFixed(1)}</td>
+        <td class="${c.severity}">${c.severity}</td>
+        <td class="cvd" title="${esc(c.desc)}">${esc(c.desc.slice(0,90))}</td>
+      </tr>`;
+    });
+    cveHtml+='</table>';
+  }
+
   c.innerHTML=`
     <div class="p-ip">${esc(d.ip)}</div>
     <div class="p-row"><span class="p-lbl">MAC</span><span class="p-val">${esc(d.mac||'—')}</span></div>
     ${d.os&&d.role!=='scanner'?`<div class="p-row"><span class="p-lbl">OS</span>
       <span class="os-badge" style="background:${col}22;color:${col}">${esc(d.os)}</span></div>`:''}
     ${d.ttl?`<div class="p-row"><span class="p-lbl">TTL</span><span class="p-val">${d.ttl}</span></div>`:''}
-    ${rows}`;
+    ${rows}${cveHtml}`;
 }
 </script>
 </body>

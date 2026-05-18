@@ -32,13 +32,17 @@ def _build_data(scanner_ip: str, scanner_mac, network: str,
                 "service": r.get("service", ""),
                 "version": r.get("version", ""),
                 "banner":  r.get("banner",  ""),
+                "cves":    r.get("cves",    []),
             })
         hosts.append({
-            "ip":   ip,
-            "mac":  _fmt_mac(entry["mac"]),
-            "os":   entry.get("os_guess", "?"),
-            "ttl":  ref_ttl,
-            "ports": ports,
+            "ip":         ip,
+            "mac":        _fmt_mac(entry["mac"]),
+            "os":         entry.get("os_guess", "?"),
+            "ttl":        ref_ttl,
+            "risk_score": entry.get("risk_score", 0.0),
+            "risk_level": entry.get("risk_level", "NONE"),
+            "total_cves": entry.get("total_cves", 0),
+            "ports":      ports,
         })
     return {
         "scanner_ip":  scanner_ip,
@@ -88,6 +92,11 @@ td{padding:4px 3px;border-bottom:1px solid #1a2e45;vertical-align:top}
 .sv{color:#7dd3fc}.vr{color:#94a3b8;font-size:10px}
 .bn{color:#4b5563;font-size:10px;font-style:italic;max-width:200px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.CRITICAL{color:#ef4444}.HIGH{color:#f97316}.MEDIUM{color:#eab308}.LOW{color:#22c55e}.NONE{color:#475569}
+.risk-b{border:1px solid currentColor;border-radius:10px;padding:1px 8px;
+  font-size:11px;font-weight:bold;display:inline-block;margin:4px 0}
+a.cv{color:#7dd3fc;text-decoration:none;font-size:11px}a.cv:hover{text-decoration:underline}
+.cvd{color:#475569;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
   font-size:11px;color:#475569;display:flex;gap:18px;flex-shrink:0;align-items:center}
 #legend{display:flex;gap:12px;align-items:center}
@@ -130,6 +139,7 @@ const OC = {
   '?':             '#94a3b8',
 };
 const SC = {'open':'o','closed':'c','filtered':'f'};
+const RC = {'CRITICAL':'#ef4444','HIGH':'#f97316','MEDIUM':'#eab308','LOW':'#22c55e'};
 
 const canvas = document.getElementById('g');
 const ctx    = canvas.getContext('2d');
@@ -254,6 +264,13 @@ function drawNode(n){
     g.addColorStop(0, col+'60'); g.addColorStop(1,'transparent');
     ctx.beginPath(); ctx.arc(x,y,r+12,0,Math.PI*2);
     ctx.fillStyle=g; ctx.fill();
+  }
+
+  // Anneau de risque CVE (rouge=Critical … vert=Low)
+  const rc=RC[d.risk_level];
+  if(rc){
+    ctx.beginPath();ctx.arc(x,y,r+4,0,Math.PI*2);
+    ctx.strokeStyle=rc+'cc';ctx.lineWidth=3;ctx.stroke();
   }
 
   // Fond
@@ -388,13 +405,34 @@ function renderPanel(d){
     rows='<div class="sec">Hôte local (scanner)</div>';
   }
 
+  // Section CVE
+  const allCves=(d.ports||[]).flatMap(p=>(p.cves||[]).map(c=>({...c,_p:p.port})));
+  allCves.sort((a,b)=>b.cvss-a.cvss);
+  let cveHtml='';
+  if(allCves.length){
+    const rl=d.risk_level||'NONE', rs=Number(d.risk_score||0).toFixed(1);
+    cveHtml=`<div class="sec">CVE détectées (${allCves.length})</div>
+<div><span class="${rl} risk-b">${rs}/10 · ${rl}</span></div>
+<table style="margin-top:8px"><tr><th>CVE</th><th>CVSS</th><th>Sév.</th><th>Description</th></tr>`;
+    allCves.forEach(c=>{
+      cveHtml+=`<tr>
+        <td><a class="cv" href="${c.url}" target="_blank">${esc(c.id)}</a>
+            <div style="color:#334155;font-size:9px">port ${c._p}/tcp</div></td>
+        <td>${Number(c.cvss).toFixed(1)}</td>
+        <td class="${c.severity}">${c.severity}</td>
+        <td class="cvd" title="${esc(c.desc)}">${esc(c.desc.slice(0,90))}</td>
+      </tr>`;
+    });
+    cveHtml+='</table>';
+  }
+
   c.innerHTML=`
     <div class="p-ip">${esc(d.ip)}</div>
     <div class="p-row"><span class="p-lbl">MAC</span><span class="p-val">${esc(d.mac||'—')}</span></div>
     ${d.os&&d.role!=='scanner'?`<div class="p-row"><span class="p-lbl">OS</span>
       <span class="os-badge" style="background:${col}22;color:${col}">${esc(d.os)}</span></div>`:''}
     ${d.ttl?`<div class="p-row"><span class="p-lbl">TTL</span><span class="p-val">${d.ttl}</span></div>`:''}
-    ${rows}`;
+    ${rows}${cveHtml}`;
 }
 </script>
 </body>
