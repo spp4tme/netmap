@@ -13,8 +13,12 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import arp_scan
 import banner
+import local_vuln
+import os_detect
+import oui
 import report
 import syn_scan
+import timeline
 import vuln
 from arp_scan import default_iface, fmt_mac, get_iface_info
 
@@ -36,11 +40,16 @@ def parse_args():
                    help="Désactiver le banner grabbing")
     p.add_argument("--no-vuln", action="store_true",
                    help="Désactiver la recherche CVE (NVD)")
+    p.add_argument("--no-local-vuln", action="store_true",
+                   help="Désactiver les vérifications de vulnérabilités locales")
+    p.add_argument("--no-timeline", action="store_true",
+                   help="Ne pas sauvegarder l'historique ni calculer le diff")
     p.add_argument("--nvd-key", default=os.environ.get("NVD_API_KEY", ""),
                    metavar="KEY",
                    help="Clé API NVD (ou export NVD_API_KEY) — accélère ×9 le rate-limit")
-    p.add_argument("--output", "-o", default="report.html",
-                   help="Chemin du rapport HTML (défaut : report.html)")
+    _default_report = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report.html")
+    p.add_argument("--output", "-o", default=_default_report,
+                   help=f"Chemin du rapport HTML (défaut : {_default_report})")
     return p.parse_args()
 
 # ── Affichage ─────────────────────────────────────────────────────────────────
@@ -79,22 +88,25 @@ def _print_host_result(ip: str, mac: bytes, results: dict[int, dict]):
 
 def _print_summary(full_results: dict):
     _section("Résumé")
-    print(f"\n  {'IP':<18} {'MAC':<20} {'OS':<14} {'Risque':<13} Ports ouverts")
-    print("  " + "─" * 72)
+    print(f"\n  {'IP':<18} {'MAC':<20} {'OS':<20} {'Fabricant':<16} {'Risque':<13} Ports ouverts")
+    print("  " + "─" * 90)
     for ip in sorted(full_results):
         entry      = full_results[ip]
         mac_str    = fmt_mac(entry["mac"])
-        os_guess   = entry["os_guess"]
+        os_detail  = entry.get("os_detail") or entry.get("os_guess", "?")
+        vendor     = entry.get("vendor", "")
         open_ports = sorted(p for p, r in entry["ports"].items() if r["state"] == "open")
         ports_str  = ", ".join(map(str, open_ports)) if open_ports else "—"
         risk_score = entry.get("risk_score", 0.0)
         risk_level = entry.get("risk_level", "NONE")
         n_cves     = entry.get("total_cves", 0)
-        if risk_level != "NONE":
-            risk_str = f"{risk_score:.1f} {risk_level} ({n_cves})"
+        n_local    = len(entry.get("local_vulns", []))
+        total_issues = n_cves + n_local
+        if risk_level != "NONE" or n_local:
+            risk_str = f"{risk_score:.1f} {risk_level} ({total_issues})"
         else:
             risk_str = "—"
-        print(f"  {ip:<18} {mac_str:<20} {os_guess:<14} {risk_str:<13} {ports_str}")
+        print(f"  {ip:<18} {mac_str:<20} {os_detail:<20} {vendor:<16} {risk_str:<13} {ports_str}")
     total_open = sum(
         1
         for e in full_results.values()
@@ -144,13 +156,18 @@ def main():
                 for p, bdata in banners.items():
                     port_results[p].update(bdata)
 
-        ref_ttl  = next((r["ttl"] for r in port_results.values() if r["ttl"]), None)
-        os_guess = syn_scan.guess_os(ref_ttl) if ref_ttl else "?"
+        # OUI manufacturer lookup
+        vendor = oui.lookup(mac)
+
+        # Advanced OS fingerprinting (TCP window + options)
+        os_family, os_detail = os_detect.from_port_results(port_results)
 
         full_results[ip] = {
-            "mac":      mac,
-            "os_guess": os_guess,
-            "ports":    port_results,
+            "mac":       mac,
+            "vendor":    vendor,
+            "os_guess":  os_family,
+            "os_detail": os_detail,
+            "ports":     port_results,
         }
         _print_host_result(ip, mac, port_results)
 
@@ -164,13 +181,42 @@ def main():
             entry.setdefault("risk_level", "NONE")
             entry.setdefault("total_cves", 0)
 
+    # ── Phase 3b : Vulnérabilités locales ─────────────────────────────────────
+    if not args.no_local_vuln:
+        _section("Phase 3b : Vérifications locales de sécurité")
+        for ip, entry in sorted(full_results.items()):
+            print(f"\n  → Audit local {ip} …", flush=True)
+            findings = local_vuln.audit(ip, entry["ports"])
+            entry["local_vulns"] = findings
+            for f in findings:
+                print(f"    [{f['severity']:8}] {f['title']}")
+    else:
+        for entry in full_results.values():
+            entry.setdefault("local_vulns", [])
+
     # ── Phase 4 : Résumé ──────────────────────────────────────────────────────
     _print_summary(full_results)
 
+    # ── Phase 4b : Timeline ────────────────────────────────────────────────────
+    scan_diff = None
+    if not args.no_timeline:
+        record       = timeline.to_record(full_results, src_ip, src_mac, network)
+        prev_records = timeline.load_last(2)
+        hist_path    = timeline.save(record)
+        print(f"\n  Historique sauvegardé : {hist_path}")
+        if len(prev_records) >= 1:
+            scan_diff = timeline.diff(prev_records[-1], record)
+            n_new  = len(scan_diff["new_hosts"])
+            n_gone = len(scan_diff["gone_hosts"])
+            n_chg  = len(scan_diff["changed"])
+            print(f"  Diff vs scan précédent : +{n_new} hôte(s)  -{n_gone} hôte(s)  ~{n_chg} modifié(s)")
+
     # ── Phase 5 : Rapport HTML ────────────────────────────────────────────────
     _section("Phase 5 : Génération du rapport HTML")
+    history = timeline.load_last(20) if not args.no_timeline else []
     path = report.generate(src_ip, src_mac, network, full_results,
-                           output=args.output)
+                           output=args.output,
+                           history=history, scan_diff=scan_diff)
     print(f"\n  Rapport généré : {path}\n")
 
 

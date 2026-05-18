@@ -13,6 +13,8 @@ import threading
 import time
 from datetime import datetime
 
+import os_detect
+
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 INTER_PACKET_DELAY = 0.001   # 1 ms entre chaque SYN
@@ -229,7 +231,10 @@ def scan_ports(
                 continue
 
             if flags & TCP_FLAGS_SYNACK == TCP_FLAGS_SYNACK:
-                results[p_src_port] = {"state": "open", "ttl": ttl}
+                p_ihl   = (packet[0] & 0x0F) * 4
+                win     = struct.unpack_from("!H", packet, p_ihl + 14)[0] if len(packet) >= p_ihl + 16 else 0
+                tcp_opts = os_detect.parse_tcp_opts(packet, p_ihl)
+                results[p_src_port] = {"state": "open", "ttl": ttl, "window": win, "tcp_opts": tcp_opts}
                 # Envoyer RST pour libérer la demi-connexion côté serveur
                 rst = build_rst_packet(src_ip, target_ip, our_src_port, p_src_port, tcp_ack)
                 try:
