@@ -6,11 +6,14 @@ Stdlib uniquement, aucune dépendance externe.
 """
 
 import argparse
+import ipaddress
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import arp_scan
+import banner
+import report
 import syn_scan
 from arp_scan import default_iface, fmt_mac, get_iface_info
 
@@ -28,6 +31,10 @@ def parse_args():
                    help=f"Ports à scanner, séparés par des virgules (défaut : {DEFAULT_PORTS})")
     p.add_argument("--timeout", "-t", type=float, default=1.5,
                    help="Timeout TCP par hôte en secondes (défaut : 1.5)")
+    p.add_argument("--no-banner", action="store_true",
+                   help="Désactiver le banner grabbing")
+    p.add_argument("--output", "-o", default="report.html",
+                   help="Chemin du rapport HTML (défaut : report.html)")
     return p.parse_args()
 
 # ── Affichage ─────────────────────────────────────────────────────────────────
@@ -52,8 +59,11 @@ def _print_host_result(ip: str, mac: bytes, results: dict[int, dict]):
         r     = results[port]
         icon  = _STATE_ICON.get(r["state"], "?")
         state = r["state"]
-        ttl   = f"  ttl={r['ttl']}" if r["ttl"] else ""
-        print(f"  │  {icon} {port}/tcp  {state}{ttl}")
+        svc   = r.get("service", "")
+        ver   = r.get("version", "")
+        svc_str = f"  {svc}" if svc and svc != "unknown" else ""
+        ver_str = f"/{ver[:40]}" if ver else ""
+        print(f"  │  {icon} {port}/tcp  {state}{svc_str}{ver_str}")
     open_ports = sorted(p for p, r in results.items() if r["state"] == "open")
     if open_ports:
         print(f"  └─ Ouverts : {', '.join(map(str, open_ports))}")
@@ -100,8 +110,9 @@ def main():
         sys.exit(0)
 
     # ── Phase 2 : TCP SYN scan ────────────────────────────────────────────────
-    src_ip, _, _ = get_iface_info(iface)
-    ports_label  = ", ".join(map(str, ports))
+    src_ip, src_mac, netmask = get_iface_info(iface)
+    network     = str(ipaddress.IPv4Network(f"{src_ip}/{netmask}", strict=False))
+    ports_label = ", ".join(map(str, ports))
 
     _section(f"Phase 2 : TCP SYN scan  —  {len(discovered)} hôte(s)  |  ports : {ports_label}")
 
@@ -110,6 +121,15 @@ def main():
     for ip, mac in sorted(discovered.items()):
         print(f"\n  → Scan {ip} ({fmt_mac(mac)}) …", flush=True)
         port_results = syn_scan.scan_ports(src_ip, ip, ports, timeout=args.timeout)
+
+        # ── Phase 2b : Banner grabbing ─────────────────────────────────────
+        if not args.no_banner:
+            open_ports = [p for p, r in port_results.items() if r["state"] == "open"]
+            if open_ports:
+                print(f"  → Banner grabbing {len(open_ports)} port(s) …", flush=True)
+                banners = banner.grab_all(ip, open_ports)
+                for p, bdata in banners.items():
+                    port_results[p].update(bdata)
 
         ref_ttl  = next((r["ttl"] for r in port_results.values() if r["ttl"]), None)
         os_guess = syn_scan.guess_os(ref_ttl) if ref_ttl else "?"
@@ -123,6 +143,12 @@ def main():
 
     # ── Phase 3 : Résumé ──────────────────────────────────────────────────────
     _print_summary(full_results)
+
+    # ── Phase 4 : Rapport HTML ────────────────────────────────────────────────
+    _section("Phase 4 : Génération du rapport HTML")
+    path = report.generate(src_ip, src_mac, network, full_results,
+                           output=args.output)
+    print(f"\n  Rapport généré : {path}\n")
 
 
 if __name__ == "__main__":
