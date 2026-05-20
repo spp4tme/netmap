@@ -107,9 +107,9 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 
 <header>
   <h1>NETMAP</h1>
-  <span class="meta">192.168.1.0/24 &nbsp;·&nbsp; 2026-05-18 21:48</span>
-  <span class="badge">4 host(s)</span>
-  <span class="badge">10 port(s) ouverts</span>
+  <span class="meta">192.168.1.0/24 &nbsp;·&nbsp; 2026-05-19 16:56</span>
+  <span class="badge">8 host(s)</span>
+  <span class="badge">11 port(s) ouverts</span>
 
   <!-- Animated risk gauge (SVG) -->
   <div id="gauge-wrap">
@@ -135,7 +135,7 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 
   <!-- ── Tab Réseau ── -->
   <div id="tab-network">
-    <div id="wrap"><canvas id="g"></canvas></div>
+    <div id="wrap"><canvas id="webgl-canvas"></canvas></div>
     <div id="panel">
       <div id="p-empty">&#8592; Cliquez sur un nœud<br>pour afficher les détails</div>
       <div id="p-content"></div>
@@ -152,21 +152,642 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 
 <footer>
   <div id="legend">
-    <span class="li"><span class="dot" style="background:#a78bfa"></span>Scanner</span>
-    <span class="li"><span class="dot" style="background:#22d3ee"></span>Linux/Unix</span>
-    <span class="li"><span class="dot" style="background:#60a5fa"></span>Windows</span>
-    <span class="li"><span class="dot" style="background:#fb923c"></span>Network/Cisco</span>
-    <span class="li"><span class="dot" style="background:#94a3b8"></span>Inconnu</span>
+    <span class="li"><span class="dot" style="background:#ffbf00"></span>Gateway</span>
+    <span class="li"><span class="dot" style="background:#00bfff"></span>Smartphone</span>
+    <span class="li"><span class="dot" style="background:#407fff"></span>Laptop/PC</span>
+    <span class="li"><span class="dot" style="background:#ff8019"></span>Routeur</span>
+    <span class="li"><span class="dot" style="background:#f2f24d"></span>Ampoule</span>
+    <span class="li"><span class="dot" style="background:#80859e"></span>Inconnu</span>
   </div>
-  <span>Glisser pour déplacer · Cliquer pour détails</span>
+  <span>Glisser pour orbiter · Scroll pour zoomer · Cliquer pour détails</span>
 </footer>
 
+<script>// ─── NETMAP WebGL Shaders ───────────────────────────────────────────────────
+
+const SHADERS = {
+
+  // ── Billboard icône — vertex ───────────────────────────────────────────────
+  iconVert: `
+    attribute vec2 aPosition;
+    uniform vec3  uCenter;
+    uniform mat4  uView;
+    uniform mat4  uProjection;
+    uniform float uSize;
+    varying vec2  vUV;
+    void main() {
+      vUV = aPosition;
+      vec4 clip   = uProjection * uView * vec4(uCenter, 1.0);
+      vec2 offset = aPosition * uSize * clip.w;
+      gl_Position = clip + vec4(offset, 0.0, 0.0);
+    }
+  `,
+
+  // ── Billboard icône — fragment (SDF par type) ─────────────────────────────
+  //   uIconType : 0=gateway  1=phone  2=laptop  3=router  4=bulb  5=unknown
+  iconFrag: `
+    precision mediump float;
+    uniform vec3  uColor;
+    uniform float uIconType;
+    uniform float uSelected;
+    uniform float uGlow;
+    varying vec2  vUV;
+
+    float sdRR(vec2 p, vec2 b, float r) {
+      vec2 q = abs(p) - b + r;
+      return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+    }
+    float sdCircle(vec2 p, float r) { return length(p) - r; }
+    float sdBox(vec2 p, vec2 b) {
+      vec2 d = abs(p) - b;
+      return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+    }
+
+    void main() {
+      vec2  p = vUV;
+      float d = 1.0;
+      vec3  c = uColor;
+
+      if (uIconType < 0.5) {
+        // 0 — Gateway : losange + point central
+        float diamond = abs(p.x) + abs(p.y) - 0.72;
+        float dot     = sdCircle(p, 0.20);
+        d = min(diamond, dot);
+        if (dot < 0.0) c = mix(uColor, vec3(1.0), 0.65);
+
+      } else if (uIconType < 1.5) {
+        // 1 — Smartphone : rect portrait arrondi, écran sombre, bouton home
+        d = sdRR(p, vec2(0.33, 0.73), 0.12);
+        if (d < 0.0) {
+          float screen = sdBox(p - vec2(0.0,  0.08), vec2(0.22, 0.43));
+          float btn    = sdCircle(p + vec2(0.0, 0.58), 0.08);
+          if (screen < 0.0) c = uColor * 0.22 + vec3(0.0, 0.09, 0.20);
+          if (btn    < 0.0) c = uColor * 0.55;
+        }
+
+      } else if (uIconType < 2.5) {
+        // 2 — Laptop : rect écran (haut) + rect base (bas)
+        float screen = sdRR(p - vec2(0.0,  0.30), vec2(0.50, 0.28), 0.07);
+        float base   = sdBox(p + vec2(0.0,  0.54), vec2(0.65, 0.17));
+        d = min(screen, base);
+        if (screen < 0.0) c = uColor * 0.24 + vec3(0.0, 0.07, 0.16);
+
+      } else if (uIconType < 3.5) {
+        // 3 — Routeur : boîtier + deux antennes
+        float box  = sdBox(p + vec2(0.0,    0.20), vec2(0.58, 0.36));
+        float ant1 = sdBox(p - vec2( 0.28, -0.42), vec2(0.055, 0.22));
+        float ant2 = sdBox(p - vec2(-0.28, -0.42), vec2(0.055, 0.22));
+        d = min(box, min(ant1, ant2));
+
+      } else if (uIconType < 4.5) {
+        // 4 — Ampoule : cercle + socle
+        float bulb = sdCircle(p - vec2(0.0,  0.16), 0.52);
+        float base = sdBox   (p + vec2(0.0,  0.66), vec2(0.20, 0.15));
+        d = min(bulb, base);
+        c = mix(uColor, vec3(1.0, 0.95, 0.55), 0.50);
+
+      } else {
+        // 5 — Inconnu : anneau (cercle creux)
+        float outer = sdCircle(p, 0.68);
+        float inner = sdCircle(p, 0.44);
+        d = max(outer, -inner);
+      }
+
+      float alpha = smoothstep(0.03, -0.025, d);
+      if (alpha < 0.01) discard;
+      c += uColor * clamp(-d * 0.8, 0.0, 1.0) * uGlow * 0.45;
+      c += vec3(0.45) * uSelected;
+      gl_FragColor = vec4(min(c, vec3(1.0)), alpha);
+    }
+  `,
+
+  // ── Edge vertex shader ────────────────────────────────────────────────────
+  edgeVert: `
+    attribute vec3 aPosition;
+    uniform mat4 uView;
+    uniform mat4 uProjection;
+    void main() {
+      gl_Position = uProjection * uView * vec4(aPosition, 1.0);
+    }
+  `,
+
+  // ── Edge fragment shader ──────────────────────────────────────────────────
+  edgeFrag: `
+    precision mediump float;
+    uniform vec3  uColor;
+    uniform float uAlpha;
+    void main() {
+      gl_FragColor = vec4(uColor, uAlpha);
+    }
+  `,
+
+  // ── Glow halo — vertex (billboard constant-screen-size) ───────────────────
+  glowVert: `
+    attribute vec2 aPosition;
+    uniform vec3  uCenter;
+    uniform mat4  uView;
+    uniform mat4  uProjection;
+    uniform float uSize;
+    varying vec2  vUV;
+    void main() {
+      vUV = aPosition * 0.5 + 0.5;
+      vec4 clip   = uProjection * uView * vec4(uCenter, 1.0);
+      vec2 offset = aPosition * uSize * clip.w;
+      gl_Position = clip + vec4(offset, 0.0, 0.0);
+    }
+  `,
+
+  // ── Glow halo — fragment ──────────────────────────────────────────────────
+  glowFrag: `
+    precision mediump float;
+    uniform vec3  uColor;
+    uniform float uIntensity;
+    varying vec2  vUV;
+    void main() {
+      float d     = distance(vUV, vec2(0.5));
+      float alpha = smoothstep(0.5, 0.0, d) * uIntensity;
+      gl_FragColor = vec4(uColor, alpha);
+    }
+  `
+};
+</script>
+<script>// ─── NETMAP WebGL Engine ────────────────────────────────────────────────────
+
+// ── Matrix math (no external lib) ────────────────────────────────────────────
+const Mat4 = {
+  identity() {
+    return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  },
+  multiply(a, b) {
+    const r = new Float32Array(16);
+    for (let i = 0; i < 4; i++)
+      for (let j = 0; j < 4; j++)
+        for (let k = 0; k < 4; k++)
+          r[i*4+j] += a[i*4+k] * b[k*4+j];
+    return r;
+  },
+  perspective(fov, aspect, near, far) {
+    const f = 1.0 / Math.tan(fov / 2);
+    const r = new Float32Array(16);
+    r[0]  = f / aspect;
+    r[5]  = f;
+    r[10] = (far + near) / (near - far);
+    r[11] = -1;
+    r[14] = (2 * far * near) / (near - far);
+    return r;
+  },
+  lookAt(eye, center, up) {
+    const f = norm(sub3(center, eye));
+    const s = norm(cross3(f, up));
+    const u = cross3(s, f);
+    const r = new Float32Array(16);
+    r[0]=s[0]; r[4]=s[1]; r[8]=s[2];   r[12]=-dot3(s,eye);
+    r[1]=u[0]; r[5]=u[1]; r[9]=u[2];   r[13]=-dot3(u,eye);
+    r[2]=-f[0];r[6]=-f[1];r[10]=-f[2]; r[14]= dot3(f,eye);
+    r[15]=1;
+    return r;
+  },
+  translation(x, y, z) {
+    const r = Mat4.identity();
+    r[12]=x; r[13]=y; r[14]=z;
+    return r;
+  },
+  scale(s) {
+    const r = Mat4.identity();
+    r[0]=s; r[5]=s; r[10]=s;
+    return r;
+  }
+};
+
+function sub3(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
+function dot3(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function cross3(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function norm(v){ const l=Math.hypot(...v)||1; return v.map(x=>x/l); }
+
+// ── Billboard quad (partagé : glow + icônes) ──────────────────────────────────
+const QUAD = new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]);
+
+// ── Shader helpers ────────────────────────────────────────────────────────────
+function compileShader(gl, type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+function buildProgram(gl, vert, frag) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl, gl.VERTEX_SHADER, vert));
+  gl.attachShader(p, compileShader(gl, gl.FRAGMENT_SHADER, frag));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+function uploadBuffer(gl, data, target=null) {
+  const buf = gl.createBuffer();
+  gl.bindBuffer(target||gl.ARRAY_BUFFER, buf);
+  gl.bufferData(target||gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  return buf;
+}
+
+// ── Classification et couleurs des nœuds ──────────────────────────────────────
+const TYPE_COLOR = {
+  gateway: [1.00, 0.75, 0.00],   // or
+  phone:   [0.00, 0.75, 1.00],   // cyan
+  laptop:  [0.25, 0.55, 1.00],   // bleu
+  router:  [1.00, 0.50, 0.10],   // orange
+  bulb:    [1.00, 0.95, 0.30],   // jaune
+  unknown: [0.50, 0.52, 0.62],   // gris
+};
+
+const ICON_TYPE = { gateway: 0, phone: 1, laptop: 2, router: 3, bulb: 4, unknown: 5 };
+
+function classifyNode(node) {
+  const v = (node.vendor || (node._data && node._data.vendor) || '').toLowerCase();
+  const o = (node.os || '').toLowerCase();
+  const ip = node.id || '';
+  const last = parseInt(ip.split('.').pop(), 10);
+
+  if (last === 254 || (last === 1 && ip.split('.').length === 4)) return 'gateway';
+  if (v.includes('philips') || v.includes('signify') || v.includes('hue'))
+    return 'bulb';
+  if (v.includes('apple')    || v.includes('samsung')   || v.includes('xiaomi')   ||
+      v.includes('oppo')     || v.includes('huawei')    || v.includes('motorola') ||
+      o.includes('android')  || o.includes('ios'))
+    return 'phone';
+  if (v.includes('cisco')    || v.includes('freebox')   || v.includes('livebox')  ||
+      v.includes('ubiquiti') || v.includes('netgear')   || v.includes('tp-link')  ||
+      v.includes('linksys')  || v.includes('zyxel')     || v.includes('d-link'))
+    return 'router';
+  if (o.includes('windows')  || o.includes('linux')     || o.includes('macos')    ||
+      o.includes('mac os')   || o.includes('scanner'))
+    return 'laptop';
+  return 'unknown';
+}
+
+function typeColor(type) {
+  return TYPE_COLOR[type] || TYPE_COLOR.unknown;
+}
+
+// ── Layout latence : gateway au centre, distance ∝ latence ICMP ──────────────
+//   node.latency = latence en ms (null → placé au rayon maximum)
+const LAYOUT_R_MIN = 3.5;
+const LAYOUT_R_MAX = 14.0;
+
+function starLayout(nodes, gatewayIp = '192.168.1.254') {
+  const n = nodes.length;
+  if (n === 0) return [];
+
+  // Centre : IP exacte → dernier octet 254 → premier nœud
+  let cIdx = nodes.findIndex(nd => nd.id === gatewayIp);
+  if (cIdx < 0)
+    cIdx = nodes.findIndex(nd => parseInt((nd.id || '').split('.').pop(), 10) === 254);
+  if (cIdx < 0) cIdx = 0;
+
+  const pos    = new Array(n);
+  pos[cIdx]    = [0, 0, 0];
+
+  const others = nodes.map((_, i) => i).filter(i => i !== cIdx);
+  if (others.length === 0) return pos;
+
+  // Latences valides pour normalisation
+  const lats      = others.map(ni => (typeof nodes[ni].latency === 'number') ? nodes[ni].latency : null);
+  const validLats = lats.filter(l => l !== null);
+
+  // Fallback : aucune latence → cercle fixe comme avant
+  if (validLats.length === 0) {
+    const r = Math.max(4, Math.sqrt(others.length) * 2.2);
+    others.forEach((ni, i) => {
+      const a = (2 * Math.PI * i) / others.length;
+      pos[ni] = [r * Math.cos(a), 0, r * Math.sin(a)];
+    });
+    return pos;
+  }
+
+  const latMin   = Math.min(...validLats);
+  const latMax   = Math.max(...validLats);
+  const latRange = Math.max(latMax - latMin, 0.1);    // évite la division par 0
+
+  others.forEach((ni, i) => {
+    const a   = (2 * Math.PI * i) / others.length;
+    const lat = lats[i] !== null ? lats[i] : latMax;  // injoignable → bord
+    const t   = Math.min(1.0, (lat - latMin) / latRange);
+    const r   = LAYOUT_R_MIN + t * (LAYOUT_R_MAX - LAYOUT_R_MIN);
+    pos[ni]   = [r * Math.cos(a), 0, r * Math.sin(a)];
+  });
+  return pos;
+}
+</script>
+<script>// ─── NETMAP WebGL Controls & Main ───────────────────────────────────────────
+
+// ── Camera orbit state ────────────────────────────────────────────────────────
+function createOrbitCamera(radius=8) {
+  return {
+    theta: 0.3,
+    phi: 1.1,
+    radius,
+    autoRotate: true,
+    dragging: false,
+    lastX: 0, lastY: 0,
+
+    getEye() {
+      return [
+        this.radius * Math.sin(this.phi) * Math.cos(this.theta),
+        this.radius * Math.cos(this.phi),
+        this.radius * Math.sin(this.phi) * Math.sin(this.theta)
+      ];
+    },
+
+    bindEvents(canvas) {
+      canvas.addEventListener('mousedown', e => {
+        this.dragging = true;
+        this.autoRotate = false;
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+      });
+      window.addEventListener('mouseup', () => { this.dragging = false; });
+      canvas.addEventListener('mousemove', e => {
+        if (!this.dragging) return;
+        const dx = e.clientX - this.lastX;
+        const dy = e.clientY - this.lastY;
+        this.theta -= dx * 0.005;
+        this.phi   = Math.max(0.2, Math.min(Math.PI-0.2, this.phi + dy*0.005));
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+      });
+      canvas.addEventListener('wheel', e => {
+        this.radius = Math.max(3, Math.min(60, this.radius + e.deltaY*0.01));
+        e.preventDefault();
+      }, { passive: false });
+
+      // Touch support
+      let lastTouchDist = 0;
+      canvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+          this.dragging = true; this.autoRotate = false;
+          this.lastX = e.touches[0].clientX;
+          this.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          lastTouchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+        }
+      });
+      canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && this.dragging) {
+          const dx = e.touches[0].clientX - this.lastX;
+          const dy = e.touches[0].clientY - this.lastY;
+          this.theta -= dx * 0.005;
+          this.phi = Math.max(0.2, Math.min(Math.PI-0.2, this.phi + dy*0.005));
+          this.lastX = e.touches[0].clientX;
+          this.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          this.radius = Math.max(3, Math.min(60, this.radius - (dist-lastTouchDist)*0.02));
+          lastTouchDist = dist;
+        }
+      }, { passive: false });
+      canvas.addEventListener('touchend', () => { this.dragging = false; });
+    }
+  };
+}
+
+// ── Raycasting : pick node depuis un clic souris ──────────────────────────────
+function pickNode(canvas, mouseX, mouseY, nodePositions, nodeRadius, camera, projMatrix) {
+  const rect = canvas.getBoundingClientRect();
+  const nx = ((mouseX - rect.left) / rect.width)  * 2 - 1;
+  const ny = -(((mouseY - rect.top)  / rect.height) * 2 - 1);
+
+  const invProj = invertMat4(projMatrix);
+  const eye     = camera.getEye();
+  const viewMat = Mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
+  const invView = invertMat4(viewMat);
+
+  const clipNear = [nx, ny, -1, 1];
+  const viewNear = mulMat4Vec4(invProj, clipNear);
+  viewNear[2] = -1; viewNear[3] = 0;
+  const worldDir = mulMat4Vec4(invView, viewNear);
+  const rayDir   = norm([worldDir[0], worldDir[1], worldDir[2]]);
+
+  let closest = -1, minDist = Infinity;
+  for (let i = 0; i < nodePositions.length; i++) {
+    const p  = nodePositions[i];
+    const oc = sub3(eye, p);
+    const b  = dot3(oc, rayDir);
+    const c  = dot3(oc, oc) - nodeRadius * nodeRadius;
+    const disc = b*b - c;
+    if (disc >= 0) {
+      const t = -b - Math.sqrt(disc);
+      if (t > 0 && t < minDist) { minDist = t; closest = i; }
+    }
+  }
+  return closest;
+}
+
+function mulMat4Vec4(m, v) {
+  return [
+    m[0]*v[0]+m[4]*v[1]+m[8]*v[2]+m[12]*v[3],
+    m[1]*v[0]+m[5]*v[1]+m[9]*v[2]+m[13]*v[3],
+    m[2]*v[0]+m[6]*v[1]+m[10]*v[2]+m[14]*v[3],
+    m[3]*v[0]+m[7]*v[1]+m[11]*v[2]+m[15]*v[3],
+  ];
+}
+
+function invertMat4(m) {
+  const out = new Float32Array(16);
+  const m00=m[0],m01=m[1],m02=m[2],m03=m[3];
+  const m10=m[4],m11=m[5],m12=m[6],m13=m[7];
+  const m20=m[8],m21=m[9],m22=m[10],m23=m[11];
+  const m30=m[12],m31=m[13],m32=m[14],m33=m[15];
+  const b00=m00*m11-m01*m10, b01=m00*m12-m02*m10;
+  const b02=m00*m13-m03*m10, b03=m01*m12-m02*m11;
+  const b04=m01*m13-m03*m11, b05=m02*m13-m03*m12;
+  const b06=m20*m31-m21*m30, b07=m20*m32-m22*m30;
+  const b08=m20*m33-m23*m30, b09=m21*m32-m22*m31;
+  const b10=m21*m33-m23*m31, b11=m22*m33-m23*m32;
+  let det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;
+  if(!det) return out;
+  det=1/det;
+  out[0]=(m11*b11-m12*b10+m13*b09)*det;
+  out[1]=(m02*b10-m01*b11-m03*b09)*det;
+  out[2]=(m31*b05-m32*b04+m33*b03)*det;
+  out[3]=(m22*b04-m21*b05-m23*b03)*det;
+  out[4]=(m12*b08-m10*b11-m13*b07)*det;
+  out[5]=(m00*b11-m02*b08+m03*b07)*det;
+  out[6]=(m32*b02-m30*b05-m33*b01)*det;
+  out[7]=(m20*b05-m22*b02+m23*b01)*det;
+  out[8]=(m10*b10-m11*b08+m13*b06)*det;
+  out[9]=(m01*b08-m00*b10-m03*b06)*det;
+  out[10]=(m30*b04-m31*b02+m33*b00)*det;
+  out[11]=(m21*b02-m20*b04-m23*b00)*det;
+  out[12]=(m11*b07-m10*b09-m12*b06)*det;
+  out[13]=(m00*b09-m01*b07+m02*b06)*det;
+  out[14]=(m31*b01-m30*b03-m32*b00)*det;
+  out[15]=(m20*b03-m21*b01+m22*b00)*det;
+  return out;
+}
+
+// ── Main entry point ──────────────────────────────────────────────────────────
+let _onNodeClick = null;
+
+function onNodeClick(cb) { _onNodeClick = cb; }
+
+function initWebGL(canvasId, graphData) {
+  const canvas = document.getElementById(canvasId);
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+  if (!gl) { console.error('WebGL not supported'); return; }
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // Programmes GLSL
+  const iconProg = buildProgram(gl, SHADERS.iconVert, SHADERS.iconFrag);
+  const edgeProg = buildProgram(gl, SHADERS.edgeVert, SHADERS.edgeFrag);
+  const glowProg = buildProgram(gl, SHADERS.glowVert, SHADERS.glowFrag);
+
+  // Quad partagé : glow halos + icônes billboard
+  const quadBuf = uploadBuffer(gl, QUAD);
+
+  const nodes = graphData.nodes || [];
+  const edges = graphData.edges || [];
+
+  const edgeIndices = edges.map(e => ({
+    source: nodes.findIndex(n => n.id === e.source),
+    target: nodes.findIndex(n => n.id === e.target)
+  })).filter(e => e.source >= 0 && e.target >= 0);
+
+  const positions = starLayout(nodes);
+
+  // Caméra — rayon calé sur le nœud le plus éloigné du centre
+  const maxPosR  = positions.reduce((m, p) => Math.max(m, Math.hypot(p[0], p[2])), 0);
+  const camera   = createOrbitCamera(Math.max(8, maxPosR + 5));
+  camera.bindEvents(canvas);
+
+  let selectedNode = -1;
+
+  canvas.addEventListener('click', e => {
+    if (camera.dragging) return;
+    const proj = Mat4.perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 200);
+    const hit  = pickNode(canvas, e.clientX, e.clientY, positions, 0.60, camera, proj);
+    selectedNode = hit;
+    if (hit >= 0 && _onNodeClick) _onNodeClick(nodes[hit], hit);
+  });
+
+  // Buffer des arêtes (construit une seule fois)
+  const edgeVerts = [];
+  for (const e of edgeIndices) {
+    const s = positions[e.source], t = positions[e.target];
+    edgeVerts.push(...s, ...t);
+  }
+  const edgeVertBuf = uploadBuffer(gl, new Float32Array(edgeVerts));
+
+  function resize() {
+    canvas.width  = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Render loop ─────────────────────────────────────────────────────────────
+  let lastTime = 0;
+  function render(time) {
+    const dt = (time - lastTime) / 1000;
+    lastTime = time;
+
+    if (camera.autoRotate) camera.theta += dt * 0.12;
+
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    const proj = Mat4.perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 200);
+    const eye  = camera.getEye();
+    const view = Mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
+
+    // ── Arêtes ────────────────────────────────────────────────────────────
+    gl.useProgram(edgeProg);
+    gl.uniformMatrix4fv(gl.getUniformLocation(edgeProg,'uView'),       false, view);
+    gl.uniformMatrix4fv(gl.getUniformLocation(edgeProg,'uProjection'), false, proj);
+    gl.uniform3fv(gl.getUniformLocation(edgeProg,'uColor'), [0.3, 0.6, 0.8]);
+    gl.uniform1f (gl.getUniformLocation(edgeProg,'uAlpha'), 0.35);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeVertBuf);
+    const ePos = gl.getAttribLocation(edgeProg, 'aPosition');
+    gl.enableVertexAttribArray(ePos);
+    gl.vertexAttribPointer(ePos, 3, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.LINES, 0, edgeIndices.length * 2);
+
+    // ── Glow halos (nœuds à risque élevé) ────────────────────────────────
+    gl.useProgram(glowProg);
+    gl.uniformMatrix4fv(gl.getUniformLocation(glowProg,'uView'),       false, view);
+    gl.uniformMatrix4fv(gl.getUniformLocation(glowProg,'uProjection'), false, proj);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    const gPos = gl.getAttribLocation(glowProg, 'aPosition');
+    gl.enableVertexAttribArray(gPos);
+    gl.vertexAttribPointer(gPos, 2, gl.FLOAT, false, 0, 0);
+
+    for (let i = 0; i < nodes.length; i++) {
+      const risk = nodes[i].risk || 0;
+      if (risk < 6) continue;
+      const intensity = Math.min(1.0, (risk - 6) / 4) * 0.6;
+      const col = typeColor(classifyNode(nodes[i]));
+      gl.uniform3fv(gl.getUniformLocation(glowProg,'uCenter'),    positions[i]);
+      gl.uniform3fv(gl.getUniformLocation(glowProg,'uColor'),     col);
+      gl.uniform1f (gl.getUniformLocation(glowProg,'uSize'),      0.10 + intensity * 0.06);
+      gl.uniform1f (gl.getUniformLocation(glowProg,'uIntensity'), intensity);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    // ── Icônes billboard 2D ───────────────────────────────────────────────
+    gl.useProgram(iconProg);
+    gl.uniformMatrix4fv(gl.getUniformLocation(iconProg,'uView'),       false, view);
+    gl.uniformMatrix4fv(gl.getUniformLocation(iconProg,'uProjection'), false, proj);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    const iPos = gl.getAttribLocation(iconProg, 'aPosition');
+    gl.enableVertexAttribArray(iPos);
+    gl.vertexAttribPointer(iPos, 2, gl.FLOAT, false, 0, 0);
+
+    for (let i = 0; i < nodes.length; i++) {
+      const itype = classifyNode(nodes[i]);
+      const col   = typeColor(itype);
+      const risk  = nodes[i].risk || 0;
+      const glow  = risk >= 7 ? 1.0 : risk >= 5 ? 0.4 : 0.0;
+      const sel   = selectedNode === i ? 1.0 : 0.0;
+      const base  = itype === 'gateway' ? 0.075 : 0.050;
+      const size  = base + Math.min(0.020, (nodes[i].openPorts || 0) * 0.003);
+
+      gl.uniform3fv(gl.getUniformLocation(iconProg,'uCenter'),   positions[i]);
+      gl.uniform3fv(gl.getUniformLocation(iconProg,'uColor'),    col);
+      gl.uniform1f (gl.getUniformLocation(iconProg,'uIconType'), ICON_TYPE[itype]);
+      gl.uniform1f (gl.getUniformLocation(iconProg,'uSize'),     size);
+      gl.uniform1f (gl.getUniformLocation(iconProg,'uGlow'),     glow);
+      gl.uniform1f (gl.getUniformLocation(iconProg,'uSelected'), sel);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+
+  return { camera, positions, nodes };
+}
+</script>
 <script>
 const DATA    = {
   "scanner_ip": "192.168.1.43",
   "scanner_mac": "00:0c:29:da:26:5c",
   "network": "192.168.1.0/24",
-  "scan_time": "2026-05-18 21:48",
+  "scan_time": "2026-05-19 16:56",
   "hosts": [
     {
       "ip": "192.168.1.254",
@@ -296,7 +917,7 @@ const DATA    = {
           "ttl": 64,
           "service": "HTTP",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 21:48:15 GMT  Content-Type: text/html; charset=utf-8  Connection:",
+          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Tue, 19 May 2026 16:55:57 GMT  Content-Type: text/html; charset=utf-8  Connection:",
           "cves": [
             {
               "id": "CVE-2009-2629",
@@ -422,7 +1043,7 @@ const DATA    = {
           "ttl": 64,
           "service": "HTTPS",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 21:48:15 GMT  Content-Type: text/html; charset=utf-8  Connection:",
+          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Tue, 19 May 2026 16:55:57 GMT  Content-Type: text/html; charset=utf-8  Connection:",
           "cves": [
             {
               "id": "CVE-2009-2629",
@@ -560,7 +1181,710 @@ const DATA    = {
           "banner": "",
           "cves": []
         }
-      ]
+      ],
+      "latency_ms": 12.417,
+      "hostname": ""
+    },
+    {
+      "ip": "192.168.1.31",
+      "mac": "f6:24:75:d8:ff:54",
+      "os": "Linux/Unix",
+      "os_detail": "Linux/Unix",
+      "vendor": "",
+      "ttl": 64,
+      "risk_score": 0.0,
+      "risk_level": "NONE",
+      "total_cves": 0,
+      "local_vulns": [],
+      "ports": [
+        {
+          "port": 21,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 22,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 23,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 25,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 53,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 80,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 110,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 135,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 139,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 143,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 445,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3306,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3389,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 5432,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8080,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        }
+      ],
+      "latency_ms": 16.033,
+      "hostname": ""
+    },
+    {
+      "ip": "192.168.1.36",
+      "mac": "be:a7:ec:54:82:38",
+      "os": "Linux/Unix",
+      "os_detail": "Linux/Unix",
+      "vendor": "",
+      "ttl": 64,
+      "risk_score": 0.0,
+      "risk_level": "NONE",
+      "total_cves": 0,
+      "local_vulns": [],
+      "ports": [
+        {
+          "port": 21,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 22,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 23,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 25,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 53,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 80,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 110,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 135,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 139,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 143,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 445,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3306,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3389,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 5432,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8080,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        }
+      ],
+      "latency_ms": 186.232,
+      "hostname": ""
+    },
+    {
+      "ip": "192.168.1.43",
+      "mac": "00:00:00:00:00:00",
+      "os": "Linux/Unix",
+      "os_detail": "Linux/Unix",
+      "vendor": "",
+      "ttl": 64,
+      "risk_score": 6.5,
+      "risk_level": "MEDIUM",
+      "total_cves": 3,
+      "local_vulns": [],
+      "ports": [
+        {
+          "port": 21,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 22,
+          "state": "open",
+          "ttl": 64,
+          "service": "SSH",
+          "version": "OpenSSH_9.6p1 Ubuntu-3ubuntu13.16",
+          "banner": "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.16",
+          "cves": [
+            {
+              "id": "CVE-2023-51385",
+              "desc": "In ssh in OpenSSH before 9.6, OS command injection might occur if a user name or host name has shell metacharacters, and this name is referenced by an expansion token in certain situations. For example, an untrusted Git repository can have a submodul",
+              "cvss": 6.5,
+              "severity": "MEDIUM",
+              "published": "2023-12-18",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-51385"
+            },
+            {
+              "id": "CVE-2023-48795",
+              "desc": "The SSH transport protocol with certain OpenSSH extensions, found in OpenSSH before 9.6 and other products, allows remote attackers to bypass integrity checks such that some packets are omitted (from the extension negotiation message), and a client a",
+              "cvss": 5.9,
+              "severity": "MEDIUM",
+              "published": "2023-12-18",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-48795"
+            },
+            {
+              "id": "CVE-2023-51384",
+              "desc": "In ssh-agent in OpenSSH before 9.6, certain destination constraints can be incompletely applied. When destination constraints are specified during addition of PKCS#11-hosted private keys, these constraints are only applied to the first key, even if a",
+              "cvss": 5.5,
+              "severity": "MEDIUM",
+              "published": "2023-12-18",
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-51384"
+            }
+          ]
+        },
+        {
+          "port": 23,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 25,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 53,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 80,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 110,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 135,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 139,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 143,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 445,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3306,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3389,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 5432,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8080,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8443,
+          "state": "closed",
+          "ttl": 64,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        }
+      ],
+      "latency_ms": 0.364,
+      "hostname": ""
+    },
+    {
+      "ip": "192.168.1.44",
+      "mac": "b4:61:e9:a9:b6:2b",
+      "os": "?",
+      "os_detail": "?",
+      "vendor": "",
+      "ttl": null,
+      "risk_score": 0.0,
+      "risk_level": "NONE",
+      "total_cves": 0,
+      "local_vulns": [],
+      "ports": [
+        {
+          "port": 21,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 22,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 23,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 25,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 53,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 80,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 110,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 135,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 139,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 143,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 443,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 445,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3306,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 3389,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 5432,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8080,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        },
+        {
+          "port": 8443,
+          "state": "filtered",
+          "ttl": null,
+          "service": "",
+          "version": "",
+          "banner": "",
+          "cves": []
+        }
+      ],
+      "latency_ms": 145.005,
+      "hostname": ""
     },
     {
       "ip": "192.168.1.47",
@@ -658,7 +1982,7 @@ const DATA    = {
           "ttl": 64,
           "service": "HTTP",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 21:48:20 GMT  Content-Type: text/html  Content-Length: 1854  Last",
+          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Tue, 19 May 2026 16:56:08 GMT  Content-Type: text/html  Content-Length: 1854  Last",
           "cves": [
             {
               "id": "CVE-2009-2629",
@@ -784,7 +2108,7 @@ const DATA    = {
           "ttl": 64,
           "service": "HTTPS",
           "version": "nginx",
-          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Mon, 18 May 2026 21:48:20 GMT  Content-Type: text/html  Content-Length: 1854  Last",
+          "banner": "HTTP/1.1 200 OK  Server: nginx  Date: Tue, 19 May 2026 16:56:08 GMT  Content-Type: text/html  Content-Length: 1854  Last",
           "cves": [
             {
               "id": "CVE-2009-2629",
@@ -922,7 +2246,9 @@ const DATA    = {
           "banner": "",
           "cves": []
         }
-      ]
+      ],
+      "latency_ms": 2.926,
+      "hostname": ""
     },
     {
       "ip": "192.168.1.48",
@@ -1089,7 +2415,9 @@ const DATA    = {
           "banner": "",
           "cves": []
         }
-      ]
+      ],
+      "latency_ms": null,
+      "hostname": ""
     },
     {
       "ip": "192.168.1.8",
@@ -1265,12 +2593,14 @@ const DATA    = {
           "banner": "",
           "cves": []
         }
-      ]
+      ],
+      "latency_ms": null,
+      "hostname": ""
     }
   ]
 };
-const HISTORY = [{"ts": "2026-05-18T21:00:46.090547+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.31": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-18T21:48:33.707049+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.48": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}];
-const DIFF    = {"prev_ts": "2026-05-18T21:00:46.090547+00:00", "curr_ts": "2026-05-18T21:48:33.707049+00:00", "new_hosts": ["192.168.1.48"], "gone_hosts": ["192.168.1.31"], "changed": {}};
+const HISTORY = [{"ts": "2026-05-18T21:00:46.090547+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.31": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-18T21:48:33.707049+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.48": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-19T15:22:30.978254+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.31": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.44": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-19T15:28:19.852404+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-19T15:44:45.447136+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.36": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.43": {"os": "Linux/Unix", "vendor": "", "risk_level": "MEDIUM", "risk_score": 6.5, "open_ports": [22]}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.48": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-19T16:00:52.305629+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.36": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.42": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.43": {"os": "Linux/Unix", "vendor": "", "risk_level": "MEDIUM", "risk_score": 6.5, "open_ports": [22]}, "192.168.1.44": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.46": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.48": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}, {"ts": "2026-05-19T16:56:25.161748+00:00", "network": "192.168.1.0/24", "hosts": {"192.168.1.254": {"os": "Linux/Unix", "vendor": "", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [21, 53, 80, 139, 443, 445]}, "192.168.1.31": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.36": {"os": "Linux/Unix", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.43": {"os": "Linux/Unix", "vendor": "", "risk_level": "MEDIUM", "risk_score": 6.5, "open_ports": [22]}, "192.168.1.44": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.47": {"os": "Linux/Unix", "vendor": "Philips Hue", "risk_level": "HIGH", "risk_score": 7.5, "open_ports": [80, 443, 8080]}, "192.168.1.48": {"os": "?", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": []}, "192.168.1.8": {"os": "Windows", "vendor": "", "risk_level": "NONE", "risk_score": 0.0, "open_ports": [135]}}}];
+const DIFF    = {"prev_ts": "2026-05-19T16:00:52.305629+00:00", "curr_ts": "2026-05-19T16:56:25.161748+00:00", "new_hosts": ["192.168.1.31"], "gone_hosts": ["192.168.1.42", "192.168.1.46"], "changed": {"192.168.1.48": {"new_ports": [], "closed_ports": [], "service_changes": [], "os_before": "Linux/Unix", "os_after": "?", "risk_before": "NONE", "risk_after": "NONE"}}};
 
 const OC = {
   'Linux/Unix':    '#22d3ee',
@@ -1313,7 +2643,7 @@ function switchTab(name){
   document.getElementById('tab-tl')     .style.display = name==='tl'      ? 'block' : 'none';
   if(name==='vuln' && !document.getElementById('tab-vuln').dataset.built) buildVulnTab();
   if(name==='tl'   && !document.getElementById('tab-tl').dataset.built)   buildTimelineTab();
-  if(name==='network'){resize();settled=false;iter=0;}
+  if(name==='network'){/* WebGL resize géré par le moteur */}
 }
 
 // ── Vuln tab ──────────────────────────────────────────────────────────────────
@@ -1467,167 +2797,8 @@ function buildTimelineTab(){
   el.innerHTML = html;
 }
 
-// ── Force graph ────────────────────────────────────────────────────────────────
-
-const canvas = document.getElementById('g');
-const ctx    = canvas.getContext('2d');
-let W, H;
-
-function resize(){
-  const w = document.getElementById('wrap');
-  W = canvas.width  = w.clientWidth;
-  H = canvas.height = w.clientHeight;
-}
-window.addEventListener('resize', ()=>{resize();settled=false;iter=0;});
-resize();
-
-class N {
-  constructor(d,x,y){
-    this.d=d; this.x=x; this.y=y; this.vx=0; this.vy=0;
-    this.open   =(d.ports||[]).filter(p=>p.state==='open').length;
-    this.r      =Math.max(26,26+Math.min(this.open*3,18));
-    this.col    =d.role==='scanner'?OC['scanner']:(OC[d.os]||OC['?']);
-    this.sel    =false; this.pinned=false;
-  }
-}
-
-const nodes=[];
-nodes.push(new N({ip:DATA.scanner_ip,mac:DATA.scanner_mac,os:'scanner',role:'scanner',ports:[]},W/2,H/2));
-DATA.hosts.forEach((h,i)=>{
-  const a=(2*Math.PI*i)/DATA.hosts.length;
-  const rr=Math.min(W,H)*0.30;
-  nodes.push(new N(h,W/2+rr*Math.cos(a),H/2+rr*Math.sin(a)));
-});
-const edges=nodes.slice(1).map(n=>({s:nodes[0],t:n}));
-
-let iter=0,settled=false;
-
-function step(){
-  if(settled) return;
-  const K=Math.sqrt(W*H/Math.max(nodes.length,1))*1.3, K2=K*K;
-  nodes.forEach(n=>{n.fx=0;n.fy=0;});
-  for(let i=0;i<nodes.length;i++)
-    for(let j=i+1;j<nodes.length;j++){
-      const a=nodes[i],b=nodes[j];
-      let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-      const f=K2/d,ux=dx/d,uy=dy/d;
-      a.fx-=f*ux;a.fy-=f*uy;b.fx+=f*ux;b.fy+=f*uy;
-    }
-  edges.forEach(e=>{
-    const a=e.s,b=e.t;
-    let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-    const f=d*d/K*0.07,ux=dx/d,uy=dy/d;
-    if(!a.pinned){a.fx+=f*ux;a.fy+=f*uy;}
-    if(!b.pinned){b.fx-=f*ux;b.fy-=f*uy;}
-  });
-  nodes.forEach(n=>{
-    if(n.pinned) return;
-    n.fx+=(W/2-n.x)*0.003;n.fy+=(H/2-n.y)*0.003;
-    n.vx=(n.vx+n.fx)*0.78;n.vy=(n.vy+n.fy)*0.78;
-    n.x=Math.max(n.r+4,Math.min(W-n.r-4,n.x+n.vx));
-    n.y=Math.max(n.r+4,Math.min(H-n.r-4,n.y+n.vy));
-    const mv=Math.abs(n.vx)+Math.abs(n.vy);
-    if(mv>0.15) settled=false;
-  });
-  iter++;
-  if(iter>400) settled=true;
-}
-
-function adj(hex,v){
-  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
-  r=Math.min(255,Math.max(0,Math.round(r+255*v)));
-  g=Math.min(255,Math.max(0,Math.round(g+255*v)));
-  b=Math.min(255,Math.max(0,Math.round(b+255*v)));
-  return `rgb(${r},${g},${b})`;
-}
-
-function drawEdge(e){
-  const{s:a,t:b}=e;
-  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-  ctx.strokeStyle=b.open>0?'rgba(56,189,248,0.22)':'rgba(71,85,105,0.35)';
-  ctx.lineWidth=1+Math.min(b.open*0.25,1.8);ctx.stroke();
-}
-
-function drawNode(n){
-  const{x,y,r,col,sel,d}=n;
-  if(sel){
-    const g=ctx.createRadialGradient(x,y,r,x,y,r+12);
-    g.addColorStop(0,col+'60');g.addColorStop(1,'transparent');
-    ctx.beginPath();ctx.arc(x,y,r+12,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
-  }
-  const rc=RC[d.risk_level];
-  if(rc){
-    ctx.beginPath();ctx.arc(x,y,r+4,0,Math.PI*2);
-    ctx.strokeStyle=rc+'cc';ctx.lineWidth=3;ctx.stroke();
-  }
-  const gr=ctx.createRadialGradient(x-r*0.28,y-r*0.28,0,x,y,r);
-  gr.addColorStop(0,adj(col,0.35));gr.addColorStop(1,adj(col,-0.25));
-  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
-  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.strokeStyle=sel?'#ffffff':col+'bb';ctx.lineWidth=sel?2:1.5;ctx.stroke();
-  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
-  if(d.role==='scanner'){
-    ctx.font=`bold ${Math.floor(r*0.48)}px monospace`;ctx.fillText('S',x,y);
-  } else {
-    ctx.font=`bold ${Math.floor(r*0.55)}px monospace`;
-    ctx.fillText(n.open>0?String(n.open):'·',x,y);
-  }
-  ctx.fillStyle=sel?'#e2e8f0':'#64748b';
-  ctx.font=`${Math.max(9,Math.floor(r*0.36))}px monospace`;
-  ctx.textBaseline='top';ctx.fillText(d.ip,x,y+r+4);
-}
-
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  ctx.strokeStyle='rgba(51,65,85,0.25)';ctx.lineWidth=0.5;
-  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  edges.forEach(drawEdge);nodes.forEach(drawNode);
-}
-
-function loop(){step();draw();requestAnimationFrame(loop);}
-requestAnimationFrame(loop);
-
-// ── Interaction ────────────────────────────────────────────────────────────────
-
-let drag=null,dox=0,doy=0,downX=0,downY=0;
-
-function hitNode(mx,my){
-  for(let i=nodes.length-1;i>=0;i--){
-    const n=nodes[i],dx=mx-n.x,dy=my-n.y;
-    if(dx*dx+dy*dy<=n.r*n.r) return n;
-  }
-  return null;
-}
-function coords(e){
-  const rect=canvas.getBoundingClientRect();
-  return[(e.clientX-rect.left)*W/rect.width,(e.clientY-rect.top)*H/rect.height];
-}
-canvas.addEventListener('mousedown',e=>{
-  const[mx,my]=coords(e);downX=mx;downY=my;
-  const n=hitNode(mx,my);
-  if(n){drag=n;dox=n.x-mx;doy=n.y-my;n.pinned=true;canvas.style.cursor='grabbing';}
-});
-canvas.addEventListener('mousemove',e=>{
-  const[mx,my]=coords(e);
-  if(drag){drag.x=mx+dox;drag.y=my+doy;drag.vx=0;drag.vy=0;settled=false;iter=0;}
-  else canvas.style.cursor=hitNode(mx,my)?'pointer':'default';
-});
-canvas.addEventListener('mouseup',e=>{
-  const[mx,my]=coords(e);
-  if(drag){
-    if(Math.abs(mx-downX)+Math.abs(my-downY)<5) selectNode(drag);
-    drag.pinned=false;drag=null;canvas.style.cursor='pointer';
-  }
-});
-canvas.addEventListener('mouseleave',()=>{if(drag){drag.pinned=false;drag=null;}});
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
-
-function selectNode(n){
-  nodes.forEach(x=>x.sel=false);n.sel=true;
-  renderPanel(n.d);
-}
 
 function renderPanel(d){
   document.getElementById('p-empty').style.display='none';
@@ -1701,10 +2872,45 @@ function renderPanel(d){
     ${d.os&&d.role!=='scanner'?`<div class="p-row"><span class="p-lbl">OS</span>
       <span class="os-badge" style="background:${col}22;color:${col}">${esc(osDetail)}</span></div>`:''}
     ${d.ttl?`<div class="p-row"><span class="p-lbl">TTL</span><span class="p-val">${d.ttl}</span></div>`:''}
+    ${d.latency_ms!=null?`<div class="p-row"><span class="p-lbl">Ping</span><span class="p-val" style="color:#4ade80">${Number(d.latency_ms).toFixed(3)} ms</span></div>`:''}
     ${rows}${cveHtml}${lvHtml}`;
 }
 
-// Must be last: canvas, W, H, settled, iter are all defined by now.
+// ── WebGL graph ───────────────────────────────────────────────────────────────
+
+const graphData = {
+  nodes: [
+    {
+      id:        DATA.scanner_ip,
+      os:        'Scanner',
+      vendor:    '',
+      hostname:  '',
+      risk:      0,
+      openPorts: 0,
+      _data:     { ip: DATA.scanner_ip, mac: DATA.scanner_mac,
+                   os: 'scanner', role: 'scanner', ports: [] },
+    },
+    ...DATA.hosts.map(h => ({
+      id:        h.ip,
+      os:        h.os || '?',
+      vendor:    h.vendor   || '',
+      hostname:  h.hostname || '',
+      latency:   h.latency_ms != null ? h.latency_ms : null,
+      risk:      h.risk_score || 0,
+      openPorts: (h.ports||[]).filter(p=>p.state==='open').length,
+      _data:     h,
+    }))
+  ],
+  edges: DATA.hosts.map(h => ({ source: DATA.scanner_ip, target: h.ip })),
+};
+
+onNodeClick(function(node) {
+  document.getElementById('p-empty').style.display = 'none';
+  renderPanel(node._data);
+});
+
+initWebGL('webgl-canvas', graphData);
+
 switchTab('network');
 </script>
 </body>

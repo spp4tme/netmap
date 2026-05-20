@@ -13,7 +13,9 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import arp_scan
 import banner
+import latency
 import local_vuln
+import mdns
 import os_detect
 import oui
 import report
@@ -42,6 +44,8 @@ def parse_args():
                    help="Désactiver la recherche CVE (NVD)")
     p.add_argument("--no-local-vuln", action="store_true",
                    help="Désactiver les vérifications de vulnérabilités locales")
+    p.add_argument("--no-latency", action="store_true",
+                   help="Désactiver la mesure de latence ICMP")
     p.add_argument("--no-timeline", action="store_true",
                    help="Ne pas sauvegarder l'historique ni calculer le diff")
     p.add_argument("--nvd-key", default=os.environ.get("NVD_API_KEY", ""),
@@ -64,12 +68,13 @@ def _section(title: str):
     print(_SEP)
 
 
-def _print_host_result(ip: str, mac: bytes, results: dict[int, dict]):
+def _print_host_result(ip: str, mac: bytes, results: dict[int, dict], hostname: str = ""):
     ref_ttl  = next((r["ttl"] for r in results.values() if r["ttl"]), None)
     os_guess = syn_scan.guess_os(ref_ttl) if ref_ttl else "?"
     ttl_str  = f"TTL={ref_ttl}" if ref_ttl else "TTL=?"
+    host_str = f"  ({hostname})" if hostname else ""
 
-    print(f"\n  ┌─ {ip}  {fmt_mac(mac)}  {ttl_str}  OS: {os_guess}")
+    print(f"\n  ┌─ {ip}  {fmt_mac(mac)}  {ttl_str}  OS: {os_guess}{host_str}")
     for port in sorted(results):
         r     = results[port]
         icon  = _STATE_ICON.get(r["state"], "?")
@@ -130,9 +135,42 @@ def main():
     _section(f"Phase 1 : ARP scan  —  interface {iface}")
     discovered = arp_scan.scan(iface)
 
+    # ── Phase 1b : mDNS / Bonjour scan ───────────────────────────────────────
+    _section("Phase 1b : mDNS / Bonjour scan")
+    mdns_results = mdns.scan()
+    mdns_only = 0
+    for _ip, _info in sorted(mdns_results.items()):
+        _hostname = _info.get("hostname", "")
+        _services = ", ".join(_info.get("services", [])) or "—"
+        if _ip not in discovered:
+            discovered[_ip] = b"\x00" * 6
+            mdns_only += 1
+            print(f"  + {_ip:<18} {_hostname:<35} [{_services}]")
+        else:
+            print(f"    {_ip:<18} {_hostname:<35} [{_services}]")
+    print(f"\n  {len(mdns_results)} appareil(s) mDNS  |  {mdns_only} ajouté(s) hors ARP\n")
+
     if not discovered:
         print("Aucun hôte découvert. Abandon.")
         sys.exit(0)
+
+    # ── Phase 1c : Latence ICMP ───────────────────────────────────────────────
+    _section("Phase 1c : Mesure de latence ICMP")
+    if not args.no_latency:
+        _ips = sorted(discovered.keys())
+        print(f"  Envoi de {latency.PACKET_COUNT} paquets ICMP vers {len(_ips)} hôte(s) …",
+              flush=True)
+        latency_results = latency.scan(_ips)
+        print(f"\n  {'IP':<18} Latence moyenne")
+        print("  " + "─" * 36)
+        for _ip in _ips:
+            _ms = latency_results[_ip]
+            _ms_str = f"{_ms:.3f} ms" if _ms is not None else "injoignable"
+            print(f"  {_ip:<18} {_ms_str}")
+        print()
+    else:
+        latency_results = {ip: None for ip in discovered}
+        print("  (désactivée)\n")
 
     # ── Phase 2 : TCP SYN scan ────────────────────────────────────────────────
     src_ip, src_mac, netmask = get_iface_info(iface)
@@ -162,14 +200,18 @@ def main():
         # Advanced OS fingerprinting (TCP window + options)
         os_family, os_detail = os_detect.from_port_results(port_results)
 
+        _mdns_info = mdns_results.get(ip, {})
         full_results[ip] = {
-            "mac":       mac,
-            "vendor":    vendor,
-            "os_guess":  os_family,
-            "os_detail": os_detail,
-            "ports":     port_results,
+            "mac":           mac,
+            "vendor":        vendor,
+            "os_guess":      os_family,
+            "os_detail":     os_detail,
+            "ports":         port_results,
+            "hostname":      _mdns_info.get("hostname", ""),
+            "mdns_services": _mdns_info.get("services", []),
+            "latency_ms":    latency_results.get(ip),
         }
-        _print_host_result(ip, mac, port_results)
+        _print_host_result(ip, mac, port_results, hostname=full_results[ip]["hostname"])
 
     # ── Phase 3 : Analyse CVE (NVD) ──────────────────────────────────────────
     if not args.no_vuln:

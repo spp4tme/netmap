@@ -47,6 +47,8 @@ def _build_data(scanner_ip: str, scanner_mac, network: str,
             "total_cves":  entry.get("total_cves", 0),
             "local_vulns": entry.get("local_vulns", []),
             "ports":       ports,
+            "latency_ms":  entry.get("latency_ms"),
+            "hostname":    entry.get("hostname", ""),
         })
     return {
         "scanner_ip":  scanner_ip,
@@ -225,7 +227,7 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 
   <!-- ── Tab Réseau ── -->
   <div id="tab-network">
-    <div id="wrap"><canvas id="g"></canvas></div>
+    <div id="wrap"><canvas id="webgl-canvas"></canvas></div>
     <div id="panel">
       <div id="p-empty">&#8592; Cliquez sur un nœud<br>pour afficher les détails</div>
       <div id="p-content"></div>
@@ -242,15 +244,19 @@ footer{padding:6px 18px;background:#1e293b;border-top:1px solid #334155;
 
 <footer>
   <div id="legend">
-    <span class="li"><span class="dot" style="background:#a78bfa"></span>Scanner</span>
-    <span class="li"><span class="dot" style="background:#22d3ee"></span>Linux/Unix</span>
-    <span class="li"><span class="dot" style="background:#60a5fa"></span>Windows</span>
-    <span class="li"><span class="dot" style="background:#fb923c"></span>Network/Cisco</span>
-    <span class="li"><span class="dot" style="background:#94a3b8"></span>Inconnu</span>
+    <span class="li"><span class="dot" style="background:#ffbf00"></span>Gateway</span>
+    <span class="li"><span class="dot" style="background:#00bfff"></span>Smartphone</span>
+    <span class="li"><span class="dot" style="background:#407fff"></span>Laptop/PC</span>
+    <span class="li"><span class="dot" style="background:#ff8019"></span>Routeur</span>
+    <span class="li"><span class="dot" style="background:#f2f24d"></span>Ampoule</span>
+    <span class="li"><span class="dot" style="background:#80859e"></span>Inconnu</span>
   </div>
-  <span>Glisser pour déplacer · Cliquer pour détails</span>
+  <span>Glisser pour orbiter · Scroll pour zoomer · Cliquer pour détails</span>
 </footer>
 
+<script>__WEBGL_SHADERS__</script>
+<script>__WEBGL_ENGINE__</script>
+<script>__WEBGL_CONTROLS__</script>
 <script>
 const DATA    = __DATA_JSON__;
 const HISTORY = __HISTORY_JSON__;
@@ -297,7 +303,7 @@ function switchTab(name){
   document.getElementById('tab-tl')     .style.display = name==='tl'      ? 'block' : 'none';
   if(name==='vuln' && !document.getElementById('tab-vuln').dataset.built) buildVulnTab();
   if(name==='tl'   && !document.getElementById('tab-tl').dataset.built)   buildTimelineTab();
-  if(name==='network'){resize();settled=false;iter=0;}
+  if(name==='network'){/* WebGL resize géré par le moteur */}
 }
 
 // ── Vuln tab ──────────────────────────────────────────────────────────────────
@@ -451,167 +457,8 @@ function buildTimelineTab(){
   el.innerHTML = html;
 }
 
-// ── Force graph ────────────────────────────────────────────────────────────────
-
-const canvas = document.getElementById('g');
-const ctx    = canvas.getContext('2d');
-let W, H;
-
-function resize(){
-  const w = document.getElementById('wrap');
-  W = canvas.width  = w.clientWidth;
-  H = canvas.height = w.clientHeight;
-}
-window.addEventListener('resize', ()=>{resize();settled=false;iter=0;});
-resize();
-
-class N {
-  constructor(d,x,y){
-    this.d=d; this.x=x; this.y=y; this.vx=0; this.vy=0;
-    this.open   =(d.ports||[]).filter(p=>p.state==='open').length;
-    this.r      =Math.max(26,26+Math.min(this.open*3,18));
-    this.col    =d.role==='scanner'?OC['scanner']:(OC[d.os]||OC['?']);
-    this.sel    =false; this.pinned=false;
-  }
-}
-
-const nodes=[];
-nodes.push(new N({ip:DATA.scanner_ip,mac:DATA.scanner_mac,os:'scanner',role:'scanner',ports:[]},W/2,H/2));
-DATA.hosts.forEach((h,i)=>{
-  const a=(2*Math.PI*i)/DATA.hosts.length;
-  const rr=Math.min(W,H)*0.30;
-  nodes.push(new N(h,W/2+rr*Math.cos(a),H/2+rr*Math.sin(a)));
-});
-const edges=nodes.slice(1).map(n=>({s:nodes[0],t:n}));
-
-let iter=0,settled=false;
-
-function step(){
-  if(settled) return;
-  const K=Math.sqrt(W*H/Math.max(nodes.length,1))*1.3, K2=K*K;
-  nodes.forEach(n=>{n.fx=0;n.fy=0;});
-  for(let i=0;i<nodes.length;i++)
-    for(let j=i+1;j<nodes.length;j++){
-      const a=nodes[i],b=nodes[j];
-      let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-      const f=K2/d,ux=dx/d,uy=dy/d;
-      a.fx-=f*ux;a.fy-=f*uy;b.fx+=f*ux;b.fy+=f*uy;
-    }
-  edges.forEach(e=>{
-    const a=e.s,b=e.t;
-    let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-    const f=d*d/K*0.07,ux=dx/d,uy=dy/d;
-    if(!a.pinned){a.fx+=f*ux;a.fy+=f*uy;}
-    if(!b.pinned){b.fx-=f*ux;b.fy-=f*uy;}
-  });
-  nodes.forEach(n=>{
-    if(n.pinned) return;
-    n.fx+=(W/2-n.x)*0.003;n.fy+=(H/2-n.y)*0.003;
-    n.vx=(n.vx+n.fx)*0.78;n.vy=(n.vy+n.fy)*0.78;
-    n.x=Math.max(n.r+4,Math.min(W-n.r-4,n.x+n.vx));
-    n.y=Math.max(n.r+4,Math.min(H-n.r-4,n.y+n.vy));
-    const mv=Math.abs(n.vx)+Math.abs(n.vy);
-    if(mv>0.15) settled=false;
-  });
-  iter++;
-  if(iter>400) settled=true;
-}
-
-function adj(hex,v){
-  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
-  r=Math.min(255,Math.max(0,Math.round(r+255*v)));
-  g=Math.min(255,Math.max(0,Math.round(g+255*v)));
-  b=Math.min(255,Math.max(0,Math.round(b+255*v)));
-  return `rgb(${r},${g},${b})`;
-}
-
-function drawEdge(e){
-  const{s:a,t:b}=e;
-  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-  ctx.strokeStyle=b.open>0?'rgba(56,189,248,0.22)':'rgba(71,85,105,0.35)';
-  ctx.lineWidth=1+Math.min(b.open*0.25,1.8);ctx.stroke();
-}
-
-function drawNode(n){
-  const{x,y,r,col,sel,d}=n;
-  if(sel){
-    const g=ctx.createRadialGradient(x,y,r,x,y,r+12);
-    g.addColorStop(0,col+'60');g.addColorStop(1,'transparent');
-    ctx.beginPath();ctx.arc(x,y,r+12,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
-  }
-  const rc=RC[d.risk_level];
-  if(rc){
-    ctx.beginPath();ctx.arc(x,y,r+4,0,Math.PI*2);
-    ctx.strokeStyle=rc+'cc';ctx.lineWidth=3;ctx.stroke();
-  }
-  const gr=ctx.createRadialGradient(x-r*0.28,y-r*0.28,0,x,y,r);
-  gr.addColorStop(0,adj(col,0.35));gr.addColorStop(1,adj(col,-0.25));
-  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
-  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.strokeStyle=sel?'#ffffff':col+'bb';ctx.lineWidth=sel?2:1.5;ctx.stroke();
-  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
-  if(d.role==='scanner'){
-    ctx.font=`bold ${Math.floor(r*0.48)}px monospace`;ctx.fillText('S',x,y);
-  } else {
-    ctx.font=`bold ${Math.floor(r*0.55)}px monospace`;
-    ctx.fillText(n.open>0?String(n.open):'·',x,y);
-  }
-  ctx.fillStyle=sel?'#e2e8f0':'#64748b';
-  ctx.font=`${Math.max(9,Math.floor(r*0.36))}px monospace`;
-  ctx.textBaseline='top';ctx.fillText(d.ip,x,y+r+4);
-}
-
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  ctx.strokeStyle='rgba(51,65,85,0.25)';ctx.lineWidth=0.5;
-  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  edges.forEach(drawEdge);nodes.forEach(drawNode);
-}
-
-function loop(){step();draw();requestAnimationFrame(loop);}
-requestAnimationFrame(loop);
-
-// ── Interaction ────────────────────────────────────────────────────────────────
-
-let drag=null,dox=0,doy=0,downX=0,downY=0;
-
-function hitNode(mx,my){
-  for(let i=nodes.length-1;i>=0;i--){
-    const n=nodes[i],dx=mx-n.x,dy=my-n.y;
-    if(dx*dx+dy*dy<=n.r*n.r) return n;
-  }
-  return null;
-}
-function coords(e){
-  const rect=canvas.getBoundingClientRect();
-  return[(e.clientX-rect.left)*W/rect.width,(e.clientY-rect.top)*H/rect.height];
-}
-canvas.addEventListener('mousedown',e=>{
-  const[mx,my]=coords(e);downX=mx;downY=my;
-  const n=hitNode(mx,my);
-  if(n){drag=n;dox=n.x-mx;doy=n.y-my;n.pinned=true;canvas.style.cursor='grabbing';}
-});
-canvas.addEventListener('mousemove',e=>{
-  const[mx,my]=coords(e);
-  if(drag){drag.x=mx+dox;drag.y=my+doy;drag.vx=0;drag.vy=0;settled=false;iter=0;}
-  else canvas.style.cursor=hitNode(mx,my)?'pointer':'default';
-});
-canvas.addEventListener('mouseup',e=>{
-  const[mx,my]=coords(e);
-  if(drag){
-    if(Math.abs(mx-downX)+Math.abs(my-downY)<5) selectNode(drag);
-    drag.pinned=false;drag=null;canvas.style.cursor='pointer';
-  }
-});
-canvas.addEventListener('mouseleave',()=>{if(drag){drag.pinned=false;drag=null;}});
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
-
-function selectNode(n){
-  nodes.forEach(x=>x.sel=false);n.sel=true;
-  renderPanel(n.d);
-}
 
 function renderPanel(d){
   document.getElementById('p-empty').style.display='none';
@@ -685,10 +532,45 @@ function renderPanel(d){
     ${d.os&&d.role!=='scanner'?`<div class="p-row"><span class="p-lbl">OS</span>
       <span class="os-badge" style="background:${col}22;color:${col}">${esc(osDetail)}</span></div>`:''}
     ${d.ttl?`<div class="p-row"><span class="p-lbl">TTL</span><span class="p-val">${d.ttl}</span></div>`:''}
+    ${d.latency_ms!=null?`<div class="p-row"><span class="p-lbl">Ping</span><span class="p-val" style="color:#4ade80">${Number(d.latency_ms).toFixed(3)} ms</span></div>`:''}
     ${rows}${cveHtml}${lvHtml}`;
 }
 
-// Must be last: canvas, W, H, settled, iter are all defined by now.
+// ── WebGL graph ───────────────────────────────────────────────────────────────
+
+const graphData = {
+  nodes: [
+    {
+      id:        DATA.scanner_ip,
+      os:        'Scanner',
+      vendor:    '',
+      hostname:  '',
+      risk:      0,
+      openPorts: 0,
+      _data:     { ip: DATA.scanner_ip, mac: DATA.scanner_mac,
+                   os: 'scanner', role: 'scanner', ports: [] },
+    },
+    ...DATA.hosts.map(h => ({
+      id:        h.ip,
+      os:        h.os || '?',
+      vendor:    h.vendor   || '',
+      hostname:  h.hostname || '',
+      latency:   h.latency_ms != null ? h.latency_ms : null,
+      risk:      h.risk_score || 0,
+      openPorts: (h.ports||[]).filter(p=>p.state==='open').length,
+      _data:     h,
+    }))
+  ],
+  edges: DATA.hosts.map(h => ({ source: DATA.scanner_ip, target: h.ip })),
+};
+
+onNodeClick(function(node) {
+  document.getElementById('p-empty').style.display = 'none';
+  renderPanel(node._data);
+});
+
+initWebGL('webgl-canvas', graphData);
+
 switchTab('network');
 </script>
 </body>
@@ -714,15 +596,23 @@ def generate(
     host_count = len(data["hosts"])
     open_count = sum(1 for h in data["hosts"] for p in h["ports"] if p["state"] == "open")
 
+    _js_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webgl")
+    def _read_js(name: str) -> str:
+        with open(os.path.join(_js_dir, name), encoding="utf-8") as _f:
+            return _f.read()
+
     html = (
         _HTML
-        .replace("__NETWORK__",    network)
-        .replace("__SCAN_TIME__",  scan_time)
-        .replace("__HOST_COUNT__", str(host_count))
-        .replace("__OPEN_COUNT__", str(open_count))
-        .replace("__DATA_JSON__",  data_json)
-        .replace("__HISTORY_JSON__", hist_json)
-        .replace("__DIFF_JSON__",  diff_json)
+        .replace("__NETWORK__",        network)
+        .replace("__SCAN_TIME__",       scan_time)
+        .replace("__HOST_COUNT__",      str(host_count))
+        .replace("__OPEN_COUNT__",      str(open_count))
+        .replace("__DATA_JSON__",       data_json)
+        .replace("__HISTORY_JSON__",    hist_json)
+        .replace("__DIFF_JSON__",       diff_json)
+        .replace("__WEBGL_SHADERS__",   _read_js("webgl_shaders.js"))
+        .replace("__WEBGL_ENGINE__",    _read_js("webgl_engine.js"))
+        .replace("__WEBGL_CONTROLS__",  _read_js("webgl_controls.js"))
     )
 
     path = os.path.abspath(output)

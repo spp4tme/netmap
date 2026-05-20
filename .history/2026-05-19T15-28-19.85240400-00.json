@@ -1,0 +1,296 @@
+{
+  "ts": "2026-05-19T15:28:19.852404+00:00",
+  "scanner_ip": "192.168.1.43",
+  "scanner_mac": "00:0c:29:da:26:5c",
+  "network": "192.168.1.0/24",
+  "hosts": {
+    "192.168.1.254": {
+      "mac": "00:24:d4:a7:7a:85",
+      "os": "Linux/Unix",
+      "os_detail": "Linux",
+      "vendor": "",
+      "risk_score": 7.5,
+      "risk_level": "HIGH",
+      "total_cves": 20,
+      "ports": {
+        "21": {
+          "state": "open",
+          "service": "FTP",
+          "version": "Welcome to Freebox FTP Server."
+        },
+        "22": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "23": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "25": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "53": {
+          "state": "open",
+          "service": "unknown",
+          "version": ""
+        },
+        "80": {
+          "state": "open",
+          "service": "HTTP",
+          "version": "nginx"
+        },
+        "110": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "135": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "139": {
+          "state": "open",
+          "service": "unknown",
+          "version": ""
+        },
+        "143": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "443": {
+          "state": "open",
+          "service": "HTTPS",
+          "version": "nginx"
+        },
+        "445": {
+          "state": "open",
+          "service": "unknown",
+          "version": ""
+        },
+        "3306": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "3389": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "5432": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "8080": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "8443": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        }
+      }
+    },
+    "192.168.1.47": {
+      "mac": "00:17:88:24:35:f2",
+      "os": "Linux/Unix",
+      "os_detail": "Linux",
+      "vendor": "Philips Hue",
+      "risk_score": 7.5,
+      "risk_level": "HIGH",
+      "total_cves": 20,
+      "ports": {
+        "21": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "22": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "23": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "25": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "53": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "80": {
+          "state": "open",
+          "service": "HTTP",
+          "version": "nginx"
+        },
+        "110": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "135": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "139": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "143": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "443": {
+          "state": "open",
+          "service": "HTTPS",
+          "version": "nginx"
+        },
+        "445": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "3306": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "3389": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "5432": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        },
+        "8080": {
+          "state": "open",
+          "service": "HTTP",
+          "version": ""
+        },
+        "8443": {
+          "state": "closed",
+          "service": "",
+          "version": ""
+        }
+      }
+    },
+    "192.168.1.8": {
+      "mac": "40:c7:3c:26:b3:67",
+      "os": "Windows",
+      "os_detail": "Windows",
+      "vendor": "",
+      "risk_score": 0.0,
+      "risk_level": "NONE",
+      "total_cves": 0,
+      "ports": {
+        "21": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "22": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "23": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "25": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "53": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "80": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "110": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "135": {
+          "state": "open",
+          "service": "unknown",
+          "version": ""
+        },
+        "139": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "143": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "443": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "445": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "3306": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "3389": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "5432": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "8080": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        },
+        "8443": {
+          "state": "filtered",
+          "service": "",
+          "version": ""
+        }
+      }
+    }
+  }
+}
