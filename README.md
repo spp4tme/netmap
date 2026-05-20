@@ -6,7 +6,7 @@
 ![Dépendances](https://img.shields.io/badge/dépendances-aucune-success)
 
 > Scanner réseau offensif écrit en Python pur — zéro dépendance externe.  
-> Découverte ARP, port scan TCP SYN, banner grabbing, fingerprinting OS, enrichissement CVE, rapport HTML interactif.
+> Découverte ARP + mDNS/Bonjour, mesure de latence ICMP, port scan TCP SYN, banner grabbing, fingerprinting OS, enrichissement CVE, rapport WebGL 3D interactif.
 
 ---
 
@@ -24,7 +24,32 @@
 
 ## Comment ça marche
 
-NETMAP orchestre quatre phases successives, chacune alimentant la suivante.
+NETMAP orchestre six phases successives, chacune alimentant la suivante.
+
+### Phase 0 — Découverte mDNS/Bonjour (couche application)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Groupe multicast 224.0.0.251 : 5353  (RFC 6762)               │
+│                                                                 │
+│  Scanner                          Appareils sur le LAN          │
+│  ┌──────────┐  PTR query → _services._dns-sd._udp.local        │
+│  │          │ ────────────────────────►                         │
+│  │  netmap  │                                                   │
+│  │          │ ◄──── réponses PTR / SRV / A ──────────          │
+│  └──────────┘  hostname + services Bonjour                     │
+│                                                                 │
+│  UDP socket multicast — format wire DNS construit manuellement  │
+│  Décodage des labels compressés (pointeurs 0xC0) de la RFC 1035 │
+│  Chaîne PTR → SRV → A pour résoudre hostname ↔ IP             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Le scanner envoie une requête PTR pour `_services._dns-sd._udp.local`, puis écoute les annonces spontanées pendant 5 secondes.  
+Chaque réponse enrichit l'inventaire avec le nom d'hôte Bonjour (ex. `iphone-de-alice.local`) et la liste des services annoncés (`_airplay._tcp`, `_http._tcp`…).  
+Les appareils iOS et Android qui n'avaient pas répondu à l'ARP (mode veille, isolation client Wi-Fi) sont ainsi retrouvés.
+
+---
 
 ### Phase 1 — Découverte ARP (couche 2)
 
@@ -45,6 +70,30 @@ NETMAP orchestre quatre phases successives, chacune alimentant la suivante.
 ```
 
 Le scanner forge des trames ARP `who-has` pour chaque adresse du sous-réseau, écoute les réponses via un socket `AF_PACKET` et construit un dictionnaire `{IP → MAC}`.
+
+---
+
+### Phase 1b — Mesure de latence ICMP (couche 3)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  Pour chaque hôte découvert (en parallèle) :                   │
+│                                                                 │
+│  Scanner                          Cible                         │
+│  ──── ICMP Echo Request ─────────────────────────►             │
+│       ◄──── ICMP Echo Reply ──── RTT mesuré en ms              │
+│       × N paquets (défaut : 5) → latence moyenne               │
+│                                                                 │
+│  Raw socket AF_INET / IPPROTO_ICMP — paquet ICMP construit      │
+│  manuellement (struct !BBHHH) + checksum one's complement       │
+│  Identifiant unique par hôte (PID + index) pour démultiplexage  │
+│  Un thread par cible — mesures simultanées sur tout le LAN      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+La latence sert ensuite au layout 3D : plus un appareil est proche de la gateway en RTT, plus son icône est proche du centre dans le graphe WebGL.  
+Les hôtes injoignables en ICMP (firewall) sont placés en périphérie.
 
 ---
 
@@ -133,7 +182,9 @@ En parallèle, des règles locales détectent sans réseau : Telnet ouvert (CRIT
 
 | Catégorie | Détail |
 |---|---|
-| **Découverte** | ARP scan couche 2 — raw socket `AF_PACKET`, détection auto de l'interface |
+| **Découverte ARP** | ARP scan couche 2 — raw socket `AF_PACKET`, détection auto de l'interface |
+| **Découverte mDNS** | Multicast DNS/Bonjour (RFC 6762) — hostname + services Bonjour, révèle les iOS/Android en veille |
+| **Latence ICMP** | Ping from scratch (raw IPPROTO_ICMP) — N paquets par hôte en parallèle, RTT moyen en ms |
 | **Port scan** | TCP SYN stealth sur liste de ports configurable, états : ouvert / fermé / filtré |
 | **OS detection** | TTL + TCP window + MSS + SACK + timestamps → Linux 4.x/5.x, Windows 10/11, macOS, iOS, Android, Cisco, Juniper |
 | **Fabricant** | Base OUI embarquée (300+ entrées) → Apple, Samsung, Raspberry Pi, Espressif, Freebox… |
@@ -141,7 +192,8 @@ En parallèle, des règles locales détectent sans réseau : Telnet ouvert (CRIT
 | **CVE** | NVD API v2 — CVSS v3.1 prioritaire, rate limiting, cache, score de risque global |
 | **Vulns locales** | Règles hors-ligne — Telnet, FTP clair, SMBv1, RDP, VNC, FTP anonyme, chemins HTTP admin, SSL expiré/self-signed |
 | **Timeline** | Historique JSON des scans, diff automatique : nouveaux hôtes, ports ouverts/fermés, changements de service |
-| **Rapport** | HTML statique 3 onglets — graphe force-directed canvas, tableau vulnérabilités, timeline diff — zéro framework JS |
+| **Rapport WebGL 3D** | Canvas WebGL — graphe 3D interactif, icônes SDF par type, caméra orbitale, shaders GLSL écrits à la main |
+| **Layout latence** | Gateway au centre, distance des nœuds ∝ RTT ICMP — proche = faible latence |
 | **Stdlib only** | `socket`, `struct`, `fcntl`, `ssl`, `ftplib`, `urllib.request`, `concurrent.futures` — aucun `pip install` |
 
 ---
@@ -242,6 +294,12 @@ Options :
 Chaque module peut être exécuté indépendamment pour des tests ciblés :
 
 ```bash
+# Découverte mDNS/Bonjour (5 s d'écoute)
+sudo python3 mdns.py
+
+# Mesure de latence ICMP
+sudo python3 latency.py 192.168.1.1 192.168.1.42 192.168.1.100
+
 # ARP scan uniquement
 sudo python3 arp_scan.py eth0
 
@@ -313,24 +371,61 @@ Il est **entièrement statique** (aucun serveur requis) et fonctionne en ouvrant
 xdg-open report.html       # Linux
 ```
 
-### Onglet Réseau
+### Onglet Réseau — graphe WebGL 3D
 
-![Onglet Réseau](docs/screenshots/tab_network.png)
+Rendu WebGL natif — aucune bibliothèque JS (pas de Three.js, pas de D3).  
+Trois programmes GLSL compilés à la volée dans le navigateur (`webgl_shaders.js`, `webgl_engine.js`, `webgl_controls.js`).
 
-Graphe force-directed interactif (algorithme de Fruchterman-Reingold, canvas vanilla JS).  
-Chaque nœud est cliquable : ports, service, version, CVE, vulnérabilités locales, OS, fabricant.  
-Anneau coloré autour du nœud = niveau de risque (rouge = CRITICAL, orange = HIGH…).
+**Layout basé sur la latence ICMP**
+
+La gateway (`.254` ou `.1`) est placée à l'origine `(0, 0, 0)`.  
+Chaque autre nœud est disposé sur un cercle dans le plan XZ à un rayon proportionnel à son RTT mesuré :
+
+```
+rayon = R_MIN + (RTT - RTT_min) / (RTT_max - RTT_min) × (R_MAX - R_MIN)
+        [3,5 u]                                              [14 u]
+```
+
+Les hôtes injoignables en ICMP sont placés à `R_MAX` (périphérie).  
+Le résultat : un coup d'œil suffit pour identifier les appareils les plus proches physiquement de la gateway.
+
+**Icônes SDF (Signed Distance Field)**
+
+Chaque nœud est rendu comme un billboard 2D face caméra, dont la forme est calculée entièrement en GLSL dans le fragment shader.  
+Aucune texture — les primitives SDF permettent un rendu net à toute résolution.
+
+| Type | Icône GLSL | Couleur |
+|---|---|---|
+| Gateway | Hexagone isométrique 3 faces + 3 antennes | Or |
+| Smartphone (iOS / Android) | Portrait arrondi, écran sombre, bouton home | Cyan |
+| PC Windows | Moniteur large + pied + logo 4 fenêtres colorées | Bleu |
+| Linux / Tux | Corps sombre, ventre crème, yeux jaunes, bec orange | Bleu ardoise |
+| Routeur | Boîtier plat + 2 antennes + 3 LEDs (verte / orange / bleue) | Orange |
+| IoT / Ampoule | Bulle + socle + filament + reflet | Jaune |
+| Inconnu | Sphère 3D (diffuse + spéculaire + rim light) | Gris |
+
+Les nœuds à risque élevé (score ≥ 6) reçoivent un halo lumineux (`glowFrag`) dont l'intensité est proportionnelle au score.  
+La taille des icônes augmente légèrement avec le nombre de ports ouverts.
+
+**Caméra orbitale interactive**
+
+| Geste | Action |
+|---|---|
+| Clic-glisser | Rotation en orbite (θ, φ) |
+| Molette | Zoom (rayon 3 – 60 unités) |
+| Clic simple | Sélection du nœud + panneau de détails |
+| Pinch (tactile) | Zoom sur mobile |
+| Glisser (tactile) | Rotation sur mobile |
+
+Au lancement, la caméra tourne lentement automatiquement. Le premier clic-glisser coupe l'auto-rotation.  
+La sélection utilise un raycasting CPU précis (inversion des matrices projection et vue, test d'intersection rayon/sphère).
 
 ### Onglet Vulnérabilités
-
-![Onglet Vulnérabilités](docs/screenshots/tab_vuln.png)
 
 Toutes les CVE et règles locales regroupées par hôte, triées par criticité.  
 Lien direct vers la fiche NVD pour chaque CVE.
 
 ### Onglet Timeline
-
-![Onglet Timeline](docs/screenshots/tab_timeline.png)
 
 Historique de tous les scans (fichiers JSON dans `.history/`).  
 Diff visuel entre le scan précédent et l'actuel : nouveaux hôtes, ports apparus/disparus, changements de service.
@@ -342,10 +437,18 @@ Diff visuel entre le scan précédent et l'actuel : nouveaux hôtes, ports appar
 ```
 netmap/
 │
-├── netmap.py          # Orchestrateur principal — 5 phases, CLI argparse
+├── netmap.py          # Orchestrateur principal — 6 phases, CLI argparse
+│
+├── mdns.py            # Phase 0 — découverte mDNS/Bonjour (RFC 6762)
+│                      #   _build_ptr_query() · _parse_packet() · scan()
+│                      #   Format wire DNS encodé/décodé manuellement (labels + pointeurs)
 │
 ├── arp_scan.py        # Phase 1 — découverte ARP via raw AF_PACKET sockets
 │                      #   get_iface_info() · default_iface() · scan()
+│
+├── latency.py         # Phase 1b — mesure RTT ICMP from scratch
+│                      #   _build_packet() · _recv_reply() · _measure_host() · scan()
+│                      #   Raw IPPROTO_ICMP, checksum, un thread par hôte
 │
 ├── syn_scan.py        # Phase 2 — port scanner TCP SYN via raw AF_INET sockets
 │                      #   build_syn_packet() · build_rst_packet() · scan_ports()
@@ -371,8 +474,18 @@ netmap/
 │
 ├── report.py          # Générateur de rapport HTML statique 3 onglets
 │                      #   generate(scanner_ip, scanner_mac, network, full_results, …)
+│                      #   Injecte les données JSON + inline les 3 fichiers JS WebGL
 │
 ├── report.html        # Rapport du dernier scan (régénéré à chaque run)
+│
+├── webgl/
+│   ├── webgl_shaders.js   # Shaders GLSL : iconVert/Frag · edgeVert/Frag · glowVert/Frag
+│   │                      #   Fragment SDF : 7 types d'icônes (gateway, phone, windows,
+│   │                      #   linux, router, bulb, unknown) — zéro texture
+│   ├── webgl_engine.js    # Moteur WebGL : Mat4 · layout latence · classifyNode()
+│   │                      #   starLayout() · boucle de rendu requestAnimationFrame
+│   └── webgl_controls.js  # Caméra orbitale · raycasting · pickNode() · initWebGL()
+│                          #   Support souris + tactile (pinch-zoom)
 │
 └── .history/          # Scans précédents au format JSON (créé automatiquement)
     ├── 2025-01-15T14-32-00.json
@@ -386,39 +499,48 @@ netmap/
                     │              netmap.py                  │
                     └──────────────────┬──────────────────────┘
                                        │
+         ┌─────────────────────────────┼──────────────────────────┐
+         │                             │                          │
+         ▼                             ▼                          ▼
+     mdns.py                     arp_scan.py                latency.py
+ {IP → hostname,              {IP → MAC, ts}           {IP → RTT ms | None}
+  services Bonjour}
+         │                             │                          │
+         └─────────────────────────────┴──────────────────────────┘
+                                       │
               ┌────────────────────────┼────────────────────────┐
               │                        │                        │
               ▼                        ▼                        ▼
-        arp_scan.py             syn_scan.py               banner.py
-    {IP → MAC, ts}       {port → state, ttl,          {port → service,
-                          window, tcp_opts}              version, banner}
+        syn_scan.py             banner.py               os_detect.py
+    {port → state, ttl,    {port → service,          (os_family,
+     window, tcp_opts}       version, banner}          os_detail)
               │                        │                        │
               └────────────────────────┴────────────────────────┘
                                        │
                                        ▼
                               full_results : dict
-                     {IP → {mac, os_guess, os_detail,
-                            vendor, ports → {…}}}
+                     {IP → {mac, os_guess, os_detail, vendor,
+                            hostname, latency_ms, ports → {…}}}
                                        │
               ┌────────────────────────┼────────────────────────┐
               │                        │                        │
               ▼                        ▼                        ▼
-          oui.py               os_detect.py             vuln.py
-        fabricant             (os_family,             CVE + CVSS
-                               os_detail)              par port
+          oui.py                   vuln.py              local_vuln.py
+        fabricant             CVE + CVSS              règles locales
+                               par port              (Telnet, SMBv1…)
               │                        │                        │
               └────────────────────────┴────────────────────────┘
-                                       │
-                               local_vuln.py
-                          règles locales (Telnet,
-                          SMBv1, SSL, FTP anon…)
                                        │
                                timeline.py
                           save() · diff() vs
                           scan précédent
                                        │
                                report.py
-                          report.html (3 onglets)
+                    report.html (3 onglets) :
+                    ├── WebGL 3D (layout latence,
+                    │   icônes SDF, caméra orbitale)
+                    ├── Vulnérabilités (CVE + règles)
+                    └── Timeline (diff JSON)
 ```
 
 ---
@@ -449,37 +571,45 @@ Ce projet a été développé dans le cadre du BTS SIO option SISR (Solutions d'
 | Compétence | Mise en œuvre dans NETMAP |
 |---|---|
 | Modèle OSI — couche 2 | Raw socket `AF_PACKET` : manipulation directe des trames Ethernet (ARP) |
-| Modèle OSI — couche 3 | Raw socket `AF_INET` : construction manuelle des headers IP avec checksum |
+| Modèle OSI — couche 3 | Raw socket `AF_INET` : headers IP + ICMP construits manuellement avec checksum |
 | Modèle OSI — couche 4 | Construction des headers TCP (SYN, RST), pseudo-header pour checksum |
 | Modèle OSI — couches 5-7 | Banner grabbing : identification des protocoles applicatifs (SSH, HTTP, FTP, SMB…) |
+| Modèle OSI — couche 7 (DNS) | Format wire DNS encodé/décodé manuellement (labels, pointeurs 0xC0) pour mDNS |
 | Adressage et sous-réseaux | Calcul automatique du réseau (`ipaddress.IPv4Network`) depuis IP + masque |
 | Protocole ARP | Compréhension et implémentation complète du protocole (opcode, hardware type, format) |
 | Protocole TCP | Flags SYN/ACK/RST, numéros de séquence, fenêtre, options TCP |
+| Protocole ICMP | Echo Request/Reply construits from scratch — mesure de RTT par identifiant/séquence |
+| Protocole mDNS | Multicast DNS RFC 6762 — requêtes PTR, réponses SRV/A, résolution hostname ↔ IP |
 
 ### B4 — Travaux pratiques et projets
 
 | Aspect | Détail |
 |---|---|
 | Langage | Python 3.10+ — typage, dataclasses implicites, `struct`, `fcntl`, `ssl`, `socket` |
-| Algorithmes | Force-directed graph (Fruchterman-Reingold), checksums one's complement, rate limiting |
+| Algorithmes | Layout basé sur la latence ICMP, checksums one's complement, rate limiting CVE |
+| Rendu 3D temps réel | WebGL natif — 3 programmes GLSL (icônes, arêtes, halos), boucle `requestAnimationFrame` |
+| Mathématiques 3D | Matrices 4×4 écrites à la main : perspective, lookAt, inversion, raycasting |
+| Graphismes SDF | Signed Distance Fields en GLSL pour 7 types d'icônes, rendu net sans texture |
 | Architecture | Modules découplés, chaque fichier utilisable en standalone |
 | Tests | Chaque module dispose d'un point d'entrée `__main__` pour validation unitaire |
-| Rapport | Génération automatique HTML/JS, graphe interactif sans framework |
+| Rapport | Génération automatique HTML/JS/WebGL, graphe 3D interactif sans framework |
 | Veille technologique | Utilisation de l'API NVD NIST, suivi de la base CVE nationale américaine |
 
 ### Protocoles et RFC étudiés
 
 | Protocole | RFC | Implémenté dans |
 |---|---|---|
+| mDNS / Bonjour | RFC 6762 + RFC 1035 | `mdns.py` — socket UDP multicast, format wire DNS complet |
 | ARP | RFC 826 | `arp_scan.py` |
 | IP v4 | RFC 791 | `syn_scan.py` — `_build_ip_header()` |
+| ICMP | RFC 792 | `latency.py` — Echo Request/Reply from scratch, checksum, RTT |
 | TCP | RFC 793 | `syn_scan.py` — `_build_tcp_header()`, `parse_response()` |
-| ICMP (filtrage passif) | RFC 792 | `syn_scan.py` — paquet[9] != 6 → ignoré |
 | SSH banner | RFC 4253 | `banner.py` — `b"SSH-"` prefix |
 | HTTP/1.0 probe | RFC 1945 | `banner.py` — `_HTTP_PROBE` |
 | SMB | MS-SMB2 | `banner.py` — signature `\xfe\x53\x4d\x42` |
 | TLS | RFC 8446 | `local_vuln.py` — `ssl.create_default_context()` |
 | CVE / CVSS | NIST NVD | `vuln.py` — API v2 |
+| WebGL / GLSL ES 1.0 | Khronos | `webgl/` — shaders compilés dans le navigateur, SDF, billboard |
 
 ---
 
@@ -492,4 +622,4 @@ L'utilisation de ce scanner sur des réseaux sans autorisation explicite du prop
 
 ---
 
-*Projet développé dans le cadre du BTS SIO option SISR — Python stdlib uniquement, zéro dépendance externe.*
+*Projet développé dans le cadre du BTS SIO option SISR — Python stdlib uniquement + WebGL/GLSL natif, zéro dépendance externe.*
